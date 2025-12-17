@@ -1,7 +1,11 @@
 use std::fmt;
 
-const BOARD_ROWS: usize = 20;
-const BOARD_COLS: usize = 10;
+/// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
+/// rendered to the user.
+pub const BOARD_ROWS: usize = 22;
+
+/// The number of columns on the board.
+pub const BOARD_COLS: usize = 10;
 
 /// The play space. A 2D matrix where a square is one if occupied and zero otherwise.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]

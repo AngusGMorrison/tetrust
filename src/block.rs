@@ -1,3 +1,9 @@
+use std::fmt;
+
+use BlockType::*;
+use rand::Rng;
+use rand_distr::{Distribution, Uniform};
+
 /// A single orientation of a [Block], expressed as a square matrix where zeroes are empty space
 /// and ones are part of the Block.
 #[derive(Clone, Copy)]
@@ -26,7 +32,7 @@ impl fmt::Display for Orientation {
 }
 
 /// Row-column coordinates for matrix access.
-type Position = (u8, u8);
+type Position = (usize, usize);
 
 /// The coordinates describing a [Block]'s bounding box relative to the upper-left corner of its
 /// orientation matrix.
@@ -214,6 +220,9 @@ const O_ROTATIONS: &Rotations = &[
     },
 ];
 
+// TODO: Update this as new block types are added.
+const N_BLOCK_TYPES: u8 = 3;
+
 /// The varieties of block that may be seen in a game.
 #[derive(Copy, Clone, Debug)]
 pub enum BlockType {
@@ -221,10 +230,6 @@ pub enum BlockType {
     J,
     O,
 }
-
-use std::fmt;
-
-use BlockType::*;
 
 impl BlockType {
     /// Returns all the orientations a block may be rotated into.
@@ -255,6 +260,27 @@ pub struct Block {
 }
 
 impl Block {
+    pub fn new(block_type: BlockType) -> Self {
+        Self {
+            block_type,
+            rotation_counter: 0,
+        }
+    }
+
+    pub fn block_type(&self) -> BlockType {
+        self.block_type
+    }
+
+    pub fn width(&self) -> usize {
+        let bounding_box = self.rotation().bounding_box;
+        bounding_box.max.1 - bounding_box.min.1
+    }
+
+    pub fn height(&self) -> usize {
+        let bounding_box = self.rotation().bounding_box;
+        bounding_box.max.0 - bounding_box.max.1
+    }
+
     /// Returns the [Block]'s current [Rotation].
     pub fn rotation(&self) -> &'static Rotation {
         &self.block_type.rotations()[self.rotation_counter]
@@ -277,5 +303,37 @@ impl Block {
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.rotation().orientation)
+    }
+}
+
+impl From<BlockType> for Block {
+    fn from(block_type: BlockType) -> Self {
+        Self::new(block_type)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockGenerator<R: Rng> {
+    rng: R,
+    sampler: Uniform<u8>,
+}
+
+impl<R: Rng> BlockGenerator<R> {
+    pub fn new(rng: R) -> Self {
+        let sampler = Uniform::new_inclusive(1, N_BLOCK_TYPES)
+            .expect("uniform sampler is always valid for 1..=7");
+        Self { rng, sampler }
+    }
+
+    pub fn block(&mut self) -> Block {
+        match self.sampler.sample(&mut self.rng) {
+            1 => I.into(),
+            2 => J.into(),
+            3 => O.into(),
+            i => unreachable!(
+                "Only {} block types are implemented, but sampler returned {}",
+                N_BLOCK_TYPES, i
+            ),
+        }
     }
 }
