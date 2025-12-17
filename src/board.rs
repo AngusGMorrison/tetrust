@@ -12,6 +12,7 @@ impl Board {
         Self::default()
     }
 
+    #[cfg(test)]
     fn new_filled() -> Self {
         Self([[1; BOARD_COLS]; BOARD_ROWS])
     }
