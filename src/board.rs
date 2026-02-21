@@ -1,5 +1,10 @@
 use std::fmt;
 
+use crate::{
+    block::{Position, Rotation},
+    game::ActiveBlock,
+};
+
 /// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
 /// rendered to the user.
 pub const BOARD_ROWS: usize = 22;
@@ -59,6 +64,48 @@ impl Board {
 
         cleared_row_count
     }
+
+    pub fn occupied(&self, position: Position) -> bool {
+        position.0 >= BOARD_ROWS || position.1 >= BOARD_COLS || self.0[position.0][position.1] == 1
+    }
+
+    pub fn fix_active_block(&mut self, active_block: &ActiveBlock) {
+        let (board_r, board_c) = active_block.top_left();
+        let &Rotation {
+            orientation,
+            bounding_box,
+        } = active_block.rotation();
+
+        for block_r in bounding_box.row_range() {
+            // this breaks for any block that doesnt' start at the top of its bounding box
+            for block_c in bounding_box.col_range() {
+                if orientation[block_r][block_c] == 1 {
+                    self.0[board_r + block_r - bounding_box.top_left().0]
+                        [board_c + block_c - bounding_box.top_left().1] = 1
+                }
+            }
+        }
+    }
+
+    pub fn remove_active_block(&mut self, active_block: &ActiveBlock) {
+        let (board_r, board_c) = active_block.top_left();
+        let &Rotation {
+            orientation,
+            bounding_box,
+        } = active_block.rotation();
+
+        for block_r in bounding_box.row_range() {
+            for block_c in bounding_box.col_range() {
+                if orientation[block_r][block_c] == 1 {
+                    self.0[board_r + block_r][board_c + block_c] = 0
+                }
+            }
+        }
+    }
+
+    pub fn buffer_zone_occupied(&self) -> bool {
+        self.0[1].contains(&1)
+    }
 }
 
 impl From<[[u8; BOARD_COLS]; BOARD_ROWS]> for Board {
@@ -70,13 +117,20 @@ impl From<[[u8; BOARD_COLS]; BOARD_ROWS]> for Board {
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        self.0.iter().try_for_each(|row| {
+        let row_printer = |f: &mut fmt::Formatter<'_>, row: &[u8; 10]| {
             writeln!(
                 f,
                 "|{}{}{}{}{}{}{}{}{}{}|",
                 row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]
             )
-        })?;
+        };
+
+        let iter = self.0.iter();
+        iter.clone()
+            .take(2)
+            .try_for_each(|row| row_printer(f, row))?;
+        writeln!(f, "|{}|", "—".repeat(BOARD_COLS))?;
+        iter.skip(2).try_for_each(|row| row_printer(f, row))?;
         writeln!(f, "*{}*", "—".repeat(BOARD_COLS))
     }
 }

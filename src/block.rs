@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    fmt,
+    ops::{self, RangeInclusive},
+};
 
 use BlockType::*;
 use rand::Rng;
@@ -31,34 +34,50 @@ impl fmt::Display for Orientation {
     }
 }
 
+impl ops::Index<usize> for Orientation {
+    type Output = [u8];
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.0[index]
+    }
+}
+
 /// Row-column coordinates for matrix access.
-type Position = (usize, usize);
+pub type Position = (usize, usize);
 
 /// The coordinates describing a [Block]'s bounding box relative to the upper-left corner of its
 /// orientation matrix.
 #[derive(Debug, Clone, Copy)]
 pub struct BoundingBox {
     // The upper-leftmost rc-coordinate of the Block.
-    min: Position,
+    top_left: Position,
     // The lower-rightmost rc-coordinate of the Block.
-    max: Position,
+    bottom_right: Position,
 }
 
 impl BoundingBox {
-    pub fn min(&self) -> Position {
-        self.min
+    pub fn top_left(&self) -> Position {
+        self.top_left
     }
 
-    pub fn max(&self) -> Position {
-        self.max
+    pub fn bottom_right(&self) -> Position {
+        self.bottom_right
+    }
+
+    pub fn row_range(&self) -> RangeInclusive<usize> {
+        self.top_left.0..=self.bottom_right.0
+    }
+
+    pub fn col_range(&self) -> RangeInclusive<usize> {
+        self.top_left.1..=self.bottom_right.1
     }
 }
 
 /// Rotating a [Block] results in a new [Orientation] and [BoundingBox].
 #[derive(Debug, Clone, Copy)]
 pub struct Rotation {
-    orientation: Orientation,
-    bounding_box: BoundingBox,
+    pub orientation: Orientation,
+    pub bounding_box: BoundingBox,
 }
 
 impl Rotation {
@@ -84,8 +103,8 @@ const I_ROTATIONS: &Rotations = &[
             &[0, 0, 0, 0],
         ]),
         bounding_box: BoundingBox {
-            min: (1, 0),
-            max: (1, 3),
+            top_left: (1, 0),
+            bottom_right: (1, 3),
         },
     },
     Rotation {
@@ -96,8 +115,8 @@ const I_ROTATIONS: &Rotations = &[
             &[0, 0, 1, 0],
         ]),
         bounding_box: BoundingBox {
-            min: (0, 2),
-            max: (3, 2),
+            top_left: (0, 2),
+            bottom_right: (3, 2),
         },
     },
     Rotation {
@@ -108,8 +127,8 @@ const I_ROTATIONS: &Rotations = &[
             &[0, 0, 0, 0],
         ]),
         bounding_box: BoundingBox {
-            min: (2, 0),
-            max: (2, 3),
+            top_left: (2, 0),
+            bottom_right: (2, 3),
         },
     },
     Rotation {
@@ -120,8 +139,8 @@ const I_ROTATIONS: &Rotations = &[
             &[0, 1, 0, 0],
         ]),
         bounding_box: BoundingBox {
-            min: (0, 1),
-            max: (3, 1),
+            top_left: (0, 1),
+            bottom_right: (3, 1),
         },
     },
 ];
@@ -135,8 +154,8 @@ const J_ROTATIONS: &Rotations = &[
             &[0, 0, 0],
         ]),
         bounding_box: BoundingBox{
-            min: (0, 0),
-            max: (1, 2),
+            top_left: (0, 0),
+            bottom_right: (1, 2),
         },
     },
     Rotation {
@@ -146,8 +165,8 @@ const J_ROTATIONS: &Rotations = &[
             &[0, 1, 0],
         ]),
         bounding_box: BoundingBox{
-            min: (0, 1),
-            max: (2, 2),
+            top_left: (0, 1),
+            bottom_right: (2, 2),
         },
     },
     Rotation {
@@ -157,8 +176,8 @@ const J_ROTATIONS: &Rotations = &[
             &[0, 0, 1],
         ]),
         bounding_box: BoundingBox{
-            min: (1, 0),
-            max:(2, 2),
+            top_left: (1, 0),
+            bottom_right:(2, 2),
         },
     },
     Rotation {
@@ -168,8 +187,8 @@ const J_ROTATIONS: &Rotations = &[
             &[1, 1, 0],
         ]),
         bounding_box: BoundingBox{
-            min: (0, 0),
-            max: (2, 1),
+            top_left: (0, 0),
+            bottom_right: (2, 1),
         },
     }
 ];
@@ -184,8 +203,8 @@ const O_ROTATIONS: &Rotations = &[
             &[1, 1],
         ]),
         bounding_box: BoundingBox {
-            min: (0, 0),
-            max:(1, 1),
+            top_left: (0, 0),
+            bottom_right:(1, 1),
         },
     },
     Rotation {
@@ -194,8 +213,8 @@ const O_ROTATIONS: &Rotations = &[
             &[1, 1],
         ]),
         bounding_box: BoundingBox {
-            min: (0, 0),
-            max:(1, 1),
+            top_left: (0, 0),
+            bottom_right:(1, 1),
         },
     },
     Rotation {
@@ -204,8 +223,8 @@ const O_ROTATIONS: &Rotations = &[
             &[1, 1],
         ]),
         bounding_box: BoundingBox {
-            min: (0, 0),
-            max:(1, 1),
+            top_left: (0, 0),
+            bottom_right:(1, 1),
         },
     },
     Rotation {
@@ -214,8 +233,8 @@ const O_ROTATIONS: &Rotations = &[
             &[1, 1],
         ]),
         bounding_box: BoundingBox {
-            min: (0, 0),
-            max:(1, 1),
+            top_left: (0, 0),
+            bottom_right:(1, 1),
         },
     },
 ];
@@ -273,12 +292,12 @@ impl Block {
 
     pub fn width(&self) -> usize {
         let bounding_box = self.rotation().bounding_box;
-        bounding_box.max.1 - bounding_box.min.1
+        bounding_box.bottom_right.1 - bounding_box.top_left.1 + 1
     }
 
     pub fn height(&self) -> usize {
         let bounding_box = self.rotation().bounding_box;
-        bounding_box.max.0 - bounding_box.max.1
+        bounding_box.bottom_right.0 - bounding_box.top_left.0 + 1
     }
 
     /// Returns the [Block]'s current [Rotation].
@@ -320,8 +339,9 @@ pub struct BlockGenerator<R: Rng> {
 
 impl<R: Rng> BlockGenerator<R> {
     pub fn new(rng: R) -> Self {
-        let sampler = Uniform::new_inclusive(1, N_BLOCK_TYPES)
-            .expect("uniform sampler is always valid for 1..=7");
+        let sampler = Uniform::new_inclusive(1, N_BLOCK_TYPES).unwrap_or_else(|_| {
+            panic!("uniform sampler is always valid for 1..={}", N_BLOCK_TYPES)
+        });
         Self { rng, sampler }
     }
 
