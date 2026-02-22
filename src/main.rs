@@ -11,7 +11,7 @@ use tetrust::{
 };
 
 /// The number of ticks that must elapse between applications of gravity.
-const INITIAL_GRAVITY_TICKS: u64 = 48;
+const INITIAL_GRAVITY_TICKS: u64 = 12;
 
 fn main() {
     let block_generator = BlockGenerator::new(rand::rng());
@@ -20,19 +20,21 @@ fn main() {
     let mut timer = GameTimer::new(frame_interval, INITIAL_GRAVITY_TICKS);
 
     loop {
-        let Some(tick) = timer.update() else { continue };
-        if tick.gravity {
-            println!("{}", state);
-            println!("Press any key to continue...");
-            let mut buf = String::new();
-            io::stdin()
-                .read_line(&mut buf)
-                .expect("Failed to read from stdin");
-            state.update(Event::Gravity);
-        }
+        if let Some(tick) = timer.update() {
+            if tick.gravity {
+                println!("{}", state);
+                println!("Press any key to continue...");
+                let mut buf = String::new();
+                io::stdin()
+                    .read_line(&mut buf)
+                    .expect("Failed to read from stdin");
+                state.update(Event::Gravity);
+            }
 
-        if state.game_over() {
-            break;
+            if state.game_over() {
+                println!("GAME OVER");
+                break;
+            }
         }
 
         thread::sleep(timer.time_until_next_tick())

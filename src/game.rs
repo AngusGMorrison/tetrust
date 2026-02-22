@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt};
 
 use rand::Rng;
 
@@ -66,6 +66,18 @@ impl ActiveBlock {
     pub fn rotation(&self) -> &Rotation {
         self.block.rotation()
     }
+
+    /// Returns an iterator of the positions of the block's cells in board space in order of
+    /// increasing row then column.
+    pub fn board_positions(&self) -> impl Iterator<Item = Position> {
+        let (board_top_r, board_left_c) = self.top_left();
+        let (bb_top_r, bb_left_c) = self.rotation().bounding_box.top_left();
+        self.rotation().positions().map(move |(block_r, block_c)| {
+            let r = board_top_r + block_r - bb_top_r;
+            let c = board_left_c + block_c - bb_left_c;
+            (r, c)
+        })
+    }
 }
 
 // The [GameState] is updated in response to events passed to [GameState::update]. This decouples
@@ -81,7 +93,7 @@ pub enum Event {
 #[derive(Debug, Clone)]
 pub struct GameState<R: Rng> {
     score: u32,
-    board: RefCell<Board>,
+    board: Board,
     block_generator: BlockGenerator<R>,
     active_block: ActiveBlock,
     queue: VecDeque<Block>,
@@ -101,7 +113,7 @@ impl<R: Rng> GameState<R> {
 
         GameState {
             score: 0,
-            board: RefCell::new(Board::new()),
+            board: Board::new(),
             block_generator,
             active_block,
             queue,
@@ -109,14 +121,17 @@ impl<R: Rng> GameState<R> {
         }
     }
 
+    /// Returns the current score.
     pub fn score(&self) -> u32 {
         self.score
     }
 
+    /// Returns true is the game is over, at which point no further events will be handled.
     pub fn game_over(&self) -> bool {
         self.game_over
     }
 
+    /// Returns the current block queue as a contiguous slice.
     pub fn queue(&self) -> &[Block] {
         let (front, back) = self.queue.as_slices();
         debug_assert_eq!(
@@ -127,8 +142,8 @@ impl<R: Rng> GameState<R> {
         front
     }
 
-    // Update the [GameState] in response to an [Event]. Does nothing if called when the game is
-    // over.
+    /// Update the [GameState] in response to an [Event]. Does nothing if called when the game is
+    /// over.
     pub fn update(&mut self, event: Event) {
         use Event::*;
 
@@ -142,32 +157,34 @@ impl<R: Rng> GameState<R> {
         }
     }
 
+    /// Attempts to move the current [ActiveBlock] one row downwards, and handles the resulting
+    /// collision if movement is impossible.
     fn handle_gravity(&mut self) {
-        let mut next_position = self.active_block.top_left; // TODO: This needs to work with the block's lowest point, not its highest
-        next_position.0 += 1;
-        if self.board.borrow().occupied(next_position) {
+        self.active_block.top_left.0 += 1;
+        if self.board.collides(&self.active_block) {
+            self.active_block.top_left.0 -= 1;
             self.handle_landing()
-        } else {
-            self.active_block.top_left = next_position;
         }
     }
 
+    /// Handles the case where a block can no longer move downwards under gravity.
     fn handle_landing(&mut self) {
         // Add the active block to the board.
-        self.board.borrow_mut().fix_active_block(&self.active_block);
+        self.board.fix_active_block(&self.active_block);
 
         // Clear lines and update the score.
-        let lines_cleared = self.board.borrow_mut().clear_lines();
+        let lines_cleared = self.board.clear_lines();
         self.score += lines_cleared as u32;
 
         // Handle game over or set up the next block.
-        if self.board.borrow().buffer_zone_occupied() {
+        if self.board.buffer_zone_occupied() {
             self.game_over = true
         } else {
             self.load_next_active_block();
         }
     }
 
+    /// Pulls the next block off the queue and sets it as the game's active block.
     fn load_next_active_block(&mut self) {
         let next_block = self
             .queue
@@ -181,11 +198,30 @@ impl<R: Rng> GameState<R> {
 
 impl<R: Rng> fmt::Display for GameState<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.board.borrow_mut().fix_active_block(&self.active_block);
-        self.board.borrow().fmt(f)?;
-        self.board
-            .borrow_mut()
-            .remove_active_block(&self.active_block);
+        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
+        let mut block_positions = self.active_block.board_positions().peekable();
+        for (i, r) in self.board.iter().enumerate() {
+            if i == 2 {
+                // render the boundary between the buffer zone and the visible board
+                writeln!(f, "|{}|", "—".repeat(BOARD_COLS))?;
+            }
+
+            write!(f, "|")?;
+            for (j, v) in r.iter().enumerate() {
+                match block_positions.peek() {
+                    Some((m, n)) if *m == i && *n == j => {
+                        write!(f, "█")?;
+                        block_positions.next();
+                    }
+                    _ => {
+                        let symbol = if *v == 1 { "█" } else { " " };
+                        write!(f, "{symbol}")?;
+                    }
+                }
+            }
+            writeln!(f, "|")?;
+        }
+        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
         Ok(())
     }
 }

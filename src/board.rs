@@ -1,9 +1,6 @@
 use std::fmt;
 
-use crate::{
-    block::{Position, Rotation},
-    game::ActiveBlock,
-};
+use crate::game::ActiveBlock;
 
 /// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
 /// rendered to the user.
@@ -17,10 +14,12 @@ pub const BOARD_COLS: usize = 10;
 pub struct Board([[u8; BOARD_COLS]; BOARD_ROWS]);
 
 impl Board {
+    /// Instantiates an empty board.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Instatiates a full board.
     #[cfg(test)]
     fn new_filled() -> Self {
         Self([[1; BOARD_COLS]; BOARD_ROWS])
@@ -65,46 +64,40 @@ impl Board {
         cleared_row_count
     }
 
-    pub fn occupied(&self, position: Position) -> bool {
-        position.0 >= BOARD_ROWS || position.1 >= BOARD_COLS || self.0[position.0][position.1] == 1
+    /// Returns true if the active block overlaps a non-empty cell of the board.
+    pub fn collides(&self, active_block: &ActiveBlock) -> bool {
+        active_block
+            .board_positions()
+            .any(|pos| pos.0 >= BOARD_ROWS || pos.1 >= BOARD_COLS || self.0[pos.0][pos.1] == 1)
     }
 
+    /// Fills the board cells corresponding to the final position of the active block, fixing the
+    /// the block to the board.
     pub fn fix_active_block(&mut self, active_block: &ActiveBlock) {
-        let (board_r, board_c) = active_block.top_left();
-        let &Rotation {
-            orientation,
-            bounding_box,
-        } = active_block.rotation();
-
-        for block_r in bounding_box.row_range() {
-            // this breaks for any block that doesnt' start at the top of its bounding box
-            for block_c in bounding_box.col_range() {
-                if orientation[block_r][block_c] == 1 {
-                    self.0[board_r + block_r - bounding_box.top_left().0]
-                        [board_c + block_c - bounding_box.top_left().1] = 1
-                }
-            }
-        }
+        active_block
+            .board_positions()
+            .for_each(|(r, c)| self.0[r][c] = 1);
     }
 
-    pub fn remove_active_block(&mut self, active_block: &ActiveBlock) {
-        let (board_r, board_c) = active_block.top_left();
-        let &Rotation {
-            orientation,
-            bounding_box,
-        } = active_block.rotation();
-
-        for block_r in bounding_box.row_range() {
-            for block_c in bounding_box.col_range() {
-                if orientation[block_r][block_c] == 1 {
-                    self.0[board_r + block_r][board_c + block_c] = 0
-                }
-            }
-        }
-    }
-
+    /// Returns true if the two-row buffer zone at the top of the board is occupied, which can be
+    /// used to detect the game over state.
     pub fn buffer_zone_occupied(&self) -> bool {
-        self.0[1].contains(&1)
+        let occupied = self.0[1].contains(&1);
+
+        #[cfg(debug_assertions)]
+        if !occupied {
+            debug_assert!(
+                self.0[0].is_empty(),
+                "Lower row of buffer zone was empty, but upper row was populated."
+            )
+        }
+
+        occupied
+    }
+
+    /// Returns an iterator over the board's rows.
+    pub fn iter(&self) -> impl Iterator<Item = &[u8; BOARD_COLS]> {
+        self.0.iter()
     }
 }
 

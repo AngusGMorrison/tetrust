@@ -64,16 +64,21 @@ impl BoundingBox {
         self.bottom_right
     }
 
+    /// Returns the range of rows in the [Block]'s [Orientation] occupied by at least one of the
+    /// block's cells.
     pub fn row_range(&self) -> RangeInclusive<usize> {
         self.top_left.0..=self.bottom_right.0
     }
 
+    /// Returns the range of rows in the [Block]'s [Orientation] occupied by at least one of the
+    /// block's cells.
     pub fn col_range(&self) -> RangeInclusive<usize> {
         self.top_left.1..=self.bottom_right.1
     }
 }
 
-/// Rotating a [Block] results in a new [Orientation] and [BoundingBox].
+/// A block's Rotation is the combination of its [Orientation] with its local coordinate space, and
+/// the [BoundingBox] describing the range of cells it occupies within that space.
 #[derive(Debug, Clone, Copy)]
 pub struct Rotation {
     pub orientation: Orientation,
@@ -87,6 +92,22 @@ impl Rotation {
 
     pub fn bounding_box(&self) -> BoundingBox {
         self.bounding_box
+    }
+
+    /// Returns an iterator of the positions occupied by the block in its local coordinate space.
+    pub fn positions(&self) -> impl Iterator<Item = Position> {
+        const BLOCK_CELLS: usize = 4;
+        let mut positions = Vec::with_capacity(BLOCK_CELLS);
+        let bb = self.bounding_box;
+        for r in bb.row_range() {
+            for c in bb.col_range() {
+                if self.orientation[r][c] == 1 {
+                    positions.push((r, c))
+                }
+            }
+        }
+
+        positions.into_iter()
     }
 }
 
