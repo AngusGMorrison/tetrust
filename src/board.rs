@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::game::ActiveBlock;
+use crate::block::ActiveBlock;
 
 /// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
 /// rendered to the user.

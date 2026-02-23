@@ -3,83 +3,12 @@ use std::{collections::VecDeque, fmt};
 use rand::Rng;
 
 use crate::{
-    block::{BlockGenerator, BlockType, Position},
+    block::{ActiveBlock, BlockGenerator, BlockType},
     board::{BOARD_COLS, Board},
-    rotation::{Rotation, RotationIndex},
 };
 
 /// The maxiumum number of blocks that may be queued.
 const QUEUE_LEN: usize = 3;
-
-#[derive(Debug, Clone)]
-pub struct ActiveBlock {
-    // The row-column coordinates of the top-left corner of the block's [BoundingBox].
-    top_left: Position,
-    block_type: BlockType,
-    rotation_idx: RotationIndex,
-}
-
-impl ActiveBlock {
-    fn new(block_type: BlockType) -> Self {
-        let rotation_idx = RotationIndex::new();
-        let rotation = &block_type[rotation_idx];
-
-        let height = rotation.height();
-        debug_assert!(
-            height <= 2,
-            "Block starting height was {}. Any height greater than 2 places it out of bounds.",
-            height
-        );
-
-        let width = rotation.width();
-        debug_assert!(
-            width <= BOARD_COLS,
-            "Block width {} exceeds board width {}",
-            width,
-            BOARD_COLS,
-        );
-
-        // The initial row coordinate is the lowest possible row in the two-row buffer zone that
-        // places the block fully out of sight of the user.
-        //
-        // For example, the I block's initial position is lying horizontally on the 1st row. The
-        // O block's initial position places its top-left corner on the 0th row.
-        let r = 2 - height;
-
-        // The initial column coordinate places the block approximately in the center of the board.
-        //
-        // For example, on a standard 10-column board, the I block's leftmost cell falls in row[3],
-        // while the O and S blocks' fall in row[4]. This gives a one-cell rightwards bias to
-        // three-cell-wide blocks.
-        let c = BOARD_COLS / 2 - width / 2;
-
-        Self {
-            top_left: (r, c),
-            block_type,
-            rotation_idx,
-        }
-    }
-
-    // Returns the board-space coordinates of the top-left cell of the ActiveBlock.
-    pub fn top_left(&self) -> Position {
-        self.top_left
-    }
-
-    pub fn rotation(&self) -> &Rotation {
-        &self.block_type[self.rotation_idx]
-    }
-
-    /// Returns an iterator of the positions of the block's cells in board space in order of
-    /// increasing row then column.
-    pub fn board_positions(&self) -> impl Iterator<Item = Position> {
-        let (top, left) = self.top_left();
-        self.rotation().positions().map(move |(block_r, block_c)| {
-            let r = top + block_r - self.rotation().vertical_offset();
-            let c = left + block_c - self.rotation().horizontal_offset();
-            (r, c)
-        })
-    }
-}
 
 // The [GameState] is updated in response to events passed to [GameState::update]. This decouples
 // the representation of the game's state from concepts such as the game loop.
@@ -106,7 +35,6 @@ impl<R: Rng> GameState<R> {
     pub fn new(mut block_generator: BlockGenerator<R>) -> Self {
         let first_block = block_generator.block();
         let active_block = ActiveBlock::new(first_block);
-        println!("spawning block at position {:?}", active_block.top_left());
 
         // Populate the queue with random blocks.
         let mut queue: VecDeque<BlockType> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
@@ -161,9 +89,9 @@ impl<R: Rng> GameState<R> {
     /// Attempts to move the current [ActiveBlock] one row downwards, and handles the resulting
     /// collision if movement is impossible.
     fn handle_gravity(&mut self) {
-        self.active_block.top_left.0 += 1;
+        self.active_block.move_down();
         if self.board.collides(&self.active_block) {
-            self.active_block.top_left.0 -= 1;
+            self.active_block.move_up();
             self.handle_landing()
         }
     }
