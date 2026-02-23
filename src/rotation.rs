@@ -1,7 +1,10 @@
+use std::ops;
+
 use crate::block::Position;
 
 /// A single rotation of a block situated in a local coordinate space. Conceptually, this is a 2D
 /// matrix, but the matrix itself isn't required to implement the game.
+#[derive(Debug, Clone)]
 pub struct Rotation {
     /// The positive vertical offset of the top of the block from the local coordinate space's
     /// origin.
@@ -44,10 +47,38 @@ impl Rotation {
     }
 }
 
-type Rotations = [Rotation; 4];
+/// A complete set of four rotations for a [BlockType].
+#[derive(Debug, Clone)]
+pub struct Rotations([Rotation; 4]);
+
+/// Type-safe wrapping type for indexing [Rotations], constrained to the range 0..4.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct RotationIndex(usize);
+
+impl RotationIndex {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn inc(&mut self) {
+        self.0 = self.0.wrapping_add(1) % 4
+    }
+
+    pub fn dec(&mut self) {
+        self.0 = self.0.wrapping_sub(1) % 4
+    }
+}
+
+impl ops::Index<RotationIndex> for Rotations {
+    type Output = Rotation;
+
+    fn index(&self, index: RotationIndex) -> &Self::Output {
+        &self.0[index.0]
+    }
+}
 
 #[rustfmt::skip]
-pub const I_ROTATIONS: &Rotations = &[
+pub const I_ROTATIONS: &Rotations = &Rotations([
     Rotation {
         vertical_offset: 1,
         horizontal_offset: 0,
@@ -76,10 +107,10 @@ pub const I_ROTATIONS: &Rotations = &[
         height: 4,
         positions: [(0, 1), (1, 1), (2, 1), (3, 1)],
     },
-];
+]);
 
 #[rustfmt::skip]
-pub const J_ROTATIONS: &Rotations = &[
+pub const J_ROTATIONS: &Rotations = &Rotations([
     Rotation {
         vertical_offset: 0,
         horizontal_offset: 0,
@@ -108,10 +139,10 @@ pub const J_ROTATIONS: &Rotations = &[
         height: 3,
         positions: [(0, 1), (1, 1), (2, 0), (2, 1)],
     },
-];
+]);
 
 #[rustfmt::skip]
-pub const O_ROTATIONS: &Rotations = &[
+pub const O_ROTATIONS: &Rotations = &Rotations([
     Rotation {
         vertical_offset: 0,
         horizontal_offset: 0,
@@ -140,4 +171,4 @@ pub const O_ROTATIONS: &Rotations = &[
         height: 2,
         positions: [(0, 0), (0, 1), (1, 0), (1, 1)],
     },
-];
+]);

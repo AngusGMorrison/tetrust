@@ -3,9 +3,9 @@ use std::{collections::VecDeque, fmt};
 use rand::Rng;
 
 use crate::{
-    block::{Block, BlockGenerator, Position},
+    block::{BlockGenerator, BlockType, Position},
     board::{BOARD_COLS, Board},
-    rotation::Rotation,
+    rotation::{Rotation, RotationIndex},
 };
 
 /// The maxiumum number of blocks that may be queued.
@@ -15,19 +15,23 @@ const QUEUE_LEN: usize = 3;
 pub struct ActiveBlock {
     // The row-column coordinates of the top-left corner of the block's [BoundingBox].
     top_left: Position,
-    block: Block,
+    block_type: BlockType,
+    rotation_idx: RotationIndex,
 }
 
 impl ActiveBlock {
-    fn new(block: Block) -> Self {
-        let height = block.height();
+    fn new(block_type: BlockType) -> Self {
+        let rotation_idx = RotationIndex::new();
+        let rotation = &block_type[rotation_idx];
+
+        let height = rotation.height();
         debug_assert!(
             height <= 2,
             "Block starting height was {}. Any height greater than 2 places it out of bounds.",
             height
         );
 
-        let width = block.width();
+        let width = rotation.width();
         debug_assert!(
             width <= BOARD_COLS,
             "Block width {} exceeds board width {}",
@@ -47,34 +51,31 @@ impl ActiveBlock {
         // For example, on a standard 10-column board, the I block's leftmost cell falls in row[3],
         // while the O and S blocks' fall in row[4]. This gives a one-cell rightwards bias to
         // three-cell-wide blocks.
-        let c = BOARD_COLS / 2 - block.width() / 2;
+        let c = BOARD_COLS / 2 - width / 2;
 
         Self {
             top_left: (r, c),
-            block,
+            block_type,
+            rotation_idx,
         }
     }
 
     // Returns the board-space coordinates of the top-left cell of the ActiveBlock.
-    pub fn board_position(&self) -> Position {
+    pub fn top_left(&self) -> Position {
         self.top_left
     }
 
-    // /// Returns the board-space coordinates of the bottom-right cell of the ActiveBlock's bounding
-    // /// box.
-    // pub fn bottom_right(&self) -> Position {}
-
     pub fn rotation(&self) -> &Rotation {
-        self.block.rotation()
+        &self.block_type[self.rotation_idx]
     }
 
     /// Returns an iterator of the positions of the block's cells in board space in order of
     /// increasing row then column.
     pub fn board_positions(&self) -> impl Iterator<Item = Position> {
-        let (board_top_r, board_left_c) = self.board_position();
+        let (top, left) = self.top_left();
         self.rotation().positions().map(move |(block_r, block_c)| {
-            let r = board_top_r + block_r - self.rotation().vertical_offset();
-            let c = board_left_c + block_c - self.rotation().horizontal_offset();
+            let r = top + block_r - self.rotation().vertical_offset();
+            let c = left + block_c - self.rotation().horizontal_offset();
             (r, c)
         })
     }
@@ -96,7 +97,7 @@ pub struct GameState<R: Rng> {
     board: Board,
     block_generator: BlockGenerator<R>,
     active_block: ActiveBlock,
-    queue: VecDeque<Block>,
+    queue: VecDeque<BlockType>,
     game_over: bool,
 }
 
@@ -105,13 +106,10 @@ impl<R: Rng> GameState<R> {
     pub fn new(mut block_generator: BlockGenerator<R>) -> Self {
         let first_block = block_generator.block();
         let active_block = ActiveBlock::new(first_block);
-        println!(
-            "spawning block at position {:?}",
-            active_block.board_position()
-        );
+        println!("spawning block at position {:?}", active_block.top_left());
 
         // Populate the queue with random blocks.
-        let mut queue: VecDeque<Block> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
+        let mut queue: VecDeque<BlockType> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
         queue.make_contiguous(); // simplifies returning the queue to the game loop
 
         GameState {
@@ -135,7 +133,7 @@ impl<R: Rng> GameState<R> {
     }
 
     /// Returns the current block queue as a contiguous slice.
-    pub fn queue(&self) -> &[Block] {
+    pub fn queue(&self) -> &[BlockType] {
         let (front, back) = self.queue.as_slices();
         debug_assert_eq!(
             back.len(),

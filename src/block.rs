@@ -1,10 +1,10 @@
-use std::fmt;
+use std::{fmt, ops};
 
 use BlockType::*;
 use rand::Rng;
 use rand_distr::{Distribution, Uniform};
 
-use crate::rotation::{I_ROTATIONS, J_ROTATIONS, O_ROTATIONS, Rotation};
+use crate::rotation::{I_ROTATIONS, J_ROTATIONS, O_ROTATIONS, Rotation, RotationIndex, Rotations};
 
 /// Row-column coordinates for matrix access.
 pub type Position = (usize, usize);
@@ -21,13 +21,21 @@ pub enum BlockType {
 }
 
 impl BlockType {
-    /// Returns all the orientations a block may be rotated into.
-    fn rotations(&self) -> &'static [Rotation] {
+    /// Returns all possible rotations of the block type.
+    pub fn rotations(&self) -> &'static Rotations {
         match self {
             I => I_ROTATIONS,
             J => J_ROTATIONS,
             O => O_ROTATIONS,
         }
+    }
+}
+
+impl ops::Index<RotationIndex> for BlockType {
+    type Output = Rotation;
+
+    fn index(&self, index: RotationIndex) -> &Self::Output {
+        &self.rotations()[index]
     }
 }
 
@@ -38,58 +46,6 @@ impl fmt::Display for BlockType {
             J => writeln!(f, "J"),
             O => writeln!(f, "O"),
         }
-    }
-}
-
-/// The state of a block in play.
-#[derive(Copy, Clone, Debug)]
-pub struct Block {
-    block_type: BlockType,
-    rotation_counter: usize,
-}
-
-impl Block {
-    pub fn new(block_type: BlockType) -> Self {
-        Self {
-            block_type,
-            rotation_counter: 0,
-        }
-    }
-
-    pub fn block_type(&self) -> BlockType {
-        self.block_type
-    }
-
-    pub fn width(&self) -> usize {
-        self.rotation().width()
-    }
-
-    pub fn height(&self) -> usize {
-        self.rotation().height()
-    }
-
-    /// Returns the [Block]'s current [Rotation].
-    pub fn rotation(&self) -> &'static Rotation {
-        &self.block_type.rotations()[self.rotation_counter]
-    }
-
-    /// Rotates the [Block] clockwise, returning its new [Rotation].
-    pub fn rotate_clockwise(&mut self) -> &'static Rotation {
-        self.rotation_counter = (self.rotation_counter + 1) % 4;
-        self.rotation()
-    }
-
-    /// Rotates the [Block] counter-clockwise, returning its new [Rotation].
-    pub fn rotate_counter_clockwise(&mut self) -> &'static Rotation {
-        // usize::MAX gives the correct index % 4 even when underflow occurs.
-        self.rotation_counter = (self.rotation_counter - 1) % 4;
-        self.rotation()
-    }
-}
-
-impl From<BlockType> for Block {
-    fn from(block_type: BlockType) -> Self {
-        Self::new(block_type)
     }
 }
 
@@ -107,14 +63,13 @@ impl<R: Rng> BlockGenerator<R> {
         Self { rng, sampler }
     }
 
-    pub fn block(&mut self) -> Block {
+    pub fn block(&mut self) -> BlockType {
         match self.sampler.sample(&mut self.rng) {
-            1 => I.into(),
-            2 => J.into(),
-            3 => O.into(),
+            1 => I,
+            2 => J,
+            3 => O,
             i => unreachable!(
-                "Only {} block types are implemented, but sampler returned {}",
-                N_BLOCK_TYPES, i
+                "Only {N_BLOCK_TYPES} block types are implemented, but sampler returned {i}",
             ),
         }
     }
