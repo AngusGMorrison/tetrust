@@ -3,8 +3,9 @@ use std::{collections::VecDeque, fmt};
 use rand::Rng;
 
 use crate::{
-    block::{Block, BlockGenerator, Position, Rotation},
+    block::{Block, BlockGenerator, Position},
     board::{BOARD_COLS, Board},
+    rotation::Rotation,
 };
 
 /// The maxiumum number of blocks that may be queued.
@@ -54,8 +55,8 @@ impl ActiveBlock {
         }
     }
 
-    // Returns the board-space coordinates of the top-left cell of the ActiveBlock's bounding box.
-    pub fn top_left(&self) -> Position {
+    // Returns the board-space coordinates of the top-left cell of the ActiveBlock.
+    pub fn board_position(&self) -> Position {
         self.top_left
     }
 
@@ -70,11 +71,10 @@ impl ActiveBlock {
     /// Returns an iterator of the positions of the block's cells in board space in order of
     /// increasing row then column.
     pub fn board_positions(&self) -> impl Iterator<Item = Position> {
-        let (board_top_r, board_left_c) = self.top_left();
-        let (bb_top_r, bb_left_c) = self.rotation().bounding_box.top_left();
+        let (board_top_r, board_left_c) = self.board_position();
         self.rotation().positions().map(move |(block_r, block_c)| {
-            let r = board_top_r + block_r - bb_top_r;
-            let c = board_left_c + block_c - bb_left_c;
+            let r = board_top_r + block_r - self.rotation().vertical_offset();
+            let c = board_left_c + block_c - self.rotation().horizontal_offset();
             (r, c)
         })
     }
@@ -105,7 +105,10 @@ impl<R: Rng> GameState<R> {
     pub fn new(mut block_generator: BlockGenerator<R>) -> Self {
         let first_block = block_generator.block();
         let active_block = ActiveBlock::new(first_block);
-        println!("spawning block at position {:?}", active_block.top_left());
+        println!(
+            "spawning block at position {:?}",
+            active_block.board_position()
+        );
 
         // Populate the queue with random blocks.
         let mut queue: VecDeque<Block> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
