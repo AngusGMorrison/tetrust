@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::game::ActiveBlock;
+use crate::block::ActiveBlock;
 
 /// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
 /// rendered to the user.
@@ -87,8 +87,8 @@ impl Board {
         #[cfg(debug_assertions)]
         if !occupied {
             debug_assert!(
-                self.0[0].is_empty(),
-                "Lower row of buffer zone was empty, but upper row was populated."
+                self.0[0].iter().all(|&v| v == 0),
+                "Lower row of buffer zone was empty, but upper row was populated",
             )
         }
 

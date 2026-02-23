@@ -3,82 +3,12 @@ use std::{collections::VecDeque, fmt};
 use rand::Rng;
 
 use crate::{
-    block::{Block, BlockGenerator, Position, Rotation},
+    block::{ActiveBlock, BlockGenerator, BlockType},
     board::{BOARD_COLS, Board},
 };
 
 /// The maxiumum number of blocks that may be queued.
 const QUEUE_LEN: usize = 3;
-
-#[derive(Debug, Clone)]
-pub struct ActiveBlock {
-    // The row-column coordinates of the top-left corner of the block's [BoundingBox].
-    top_left: Position,
-    block: Block,
-}
-
-impl ActiveBlock {
-    fn new(block: Block) -> Self {
-        let height = block.height();
-        debug_assert!(
-            height <= 2,
-            "Block starting height was {}. Any height greater than 2 places it out of bounds.",
-            height
-        );
-
-        let width = block.width();
-        debug_assert!(
-            width <= BOARD_COLS,
-            "Block width {} exceeds board width {}",
-            width,
-            BOARD_COLS,
-        );
-
-        // The initial row coordinate is the lowest possible row in the two-row buffer zone that
-        // places the block fully out of sight of the user.
-        //
-        // For example, the I block's initial position is lying horizontally on the 1st row. The
-        // O block's initial position places its top-left corner on the 0th row.
-        let r = 2 - height;
-
-        // The initial column coordinate places the block approximately in the center of the board.
-        //
-        // For example, on a standard 10-column board, the I block's leftmost cell falls in row[3],
-        // while the O and S blocks' fall in row[4]. This gives a one-cell rightwards bias to
-        // three-cell-wide blocks.
-        let c = BOARD_COLS / 2 - block.width() / 2;
-
-        Self {
-            top_left: (r, c),
-            block,
-        }
-    }
-
-    // Returns the board-space coordinates of the top-left cell of the ActiveBlock's bounding box.
-    pub fn top_left(&self) -> Position {
-        self.top_left
-    }
-
-    // /// Returns the board-space coordinates of the bottom-right cell of the ActiveBlock's bounding
-    // /// box.
-    // pub fn bottom_right(&self) -> Position {}
-
-    pub fn rotation(&self) -> &Rotation {
-        self.block.rotation()
-    }
-
-    /// Returns an iterator of the positions of the block's cells in board space in order of
-    /// increasing row then column.
-    pub fn board_positions(&self) -> impl Iterator<Item = Position> {
-        let (board_top_r, board_left_c) = self.top_left();
-        let (bb_top_r, bb_left_c) = self.rotation().bounding_box.top_left();
-        self.rotation().positions().map(move |(block_r, block_c)| {
-            let r = board_top_r + block_r - bb_top_r;
-            let c = board_left_c + block_c - bb_left_c;
-            (r, c)
-        })
-    }
-}
 
 // The [GameState] is updated in response to events passed to [GameState::update]. This decouples
 // the representation of the game's state from concepts such as the game loop.
@@ -96,7 +26,7 @@ pub struct GameState<R: Rng> {
     board: Board,
     block_generator: BlockGenerator<R>,
     active_block: ActiveBlock,
-    queue: VecDeque<Block>,
+    queue: VecDeque<BlockType>,
     game_over: bool,
 }
 
@@ -105,10 +35,9 @@ impl<R: Rng> GameState<R> {
     pub fn new(mut block_generator: BlockGenerator<R>) -> Self {
         let first_block = block_generator.block();
         let active_block = ActiveBlock::new(first_block);
-        println!("spawning block at position {:?}", active_block.top_left());
 
         // Populate the queue with random blocks.
-        let mut queue: VecDeque<Block> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
+        let mut queue: VecDeque<BlockType> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
         queue.make_contiguous(); // simplifies returning the queue to the game loop
 
         GameState {
@@ -132,7 +61,7 @@ impl<R: Rng> GameState<R> {
     }
 
     /// Returns the current block queue as a contiguous slice.
-    pub fn queue(&self) -> &[Block] {
+    pub fn queue(&self) -> &[BlockType] {
         let (front, back) = self.queue.as_slices();
         debug_assert_eq!(
             back.len(),
@@ -160,9 +89,9 @@ impl<R: Rng> GameState<R> {
     /// Attempts to move the current [ActiveBlock] one row downwards, and handles the resulting
     /// collision if movement is impossible.
     fn handle_gravity(&mut self) {
-        self.active_block.top_left.0 += 1;
+        self.active_block.move_down();
         if self.board.collides(&self.active_block) {
-            self.active_block.top_left.0 -= 1;
+            self.active_block.move_up();
             self.handle_landing()
         }
     }

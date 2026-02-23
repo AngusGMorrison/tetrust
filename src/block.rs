@@ -1,264 +1,13 @@
-use std::{
-    fmt,
-    ops::{self, RangeInclusive},
-};
+use std::{fmt, ops};
 
 use BlockType::*;
 use rand::Rng;
 use rand_distr::{Distribution, Uniform};
 
-/// A single orientation of a [Block], expressed as a square matrix where zeroes are empty space
-/// and ones are part of the Block.
-#[derive(Clone, Copy)]
-pub struct Orientation(&'static [&'static [u8]]);
-
-impl fmt::Debug for Orientation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for row in self.0 {
-            for (i, val) in row.iter().enumerate() {
-                if i == row.len() - 1 {
-                    writeln!(f, "{}", val)?
-                } else {
-                    write!(f, "{} ", val)?
-                }
-            }
-        }
-
-        fmt::Result::Ok(())
-    }
-}
-
-impl fmt::Display for Orientation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self, f)
-    }
-}
-
-impl ops::Index<usize> for Orientation {
-    type Output = [u8];
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.0[index]
-    }
-}
+use crate::board::BOARD_COLS;
 
 /// Row-column coordinates for matrix access.
-pub type Position = (usize, usize);
-
-/// The coordinates describing a [Block]'s bounding box relative to the upper-left corner of its
-/// orientation matrix.
-#[derive(Debug, Clone, Copy)]
-pub struct BoundingBox {
-    // The upper-leftmost rc-coordinate of the Block.
-    top_left: Position,
-    // The lower-rightmost rc-coordinate of the Block.
-    bottom_right: Position,
-}
-
-impl BoundingBox {
-    pub fn top_left(&self) -> Position {
-        self.top_left
-    }
-
-    pub fn bottom_right(&self) -> Position {
-        self.bottom_right
-    }
-
-    /// Returns the range of rows in the [Block]'s [Orientation] occupied by at least one of the
-    /// block's cells.
-    pub fn row_range(&self) -> RangeInclusive<usize> {
-        self.top_left.0..=self.bottom_right.0
-    }
-
-    /// Returns the range of rows in the [Block]'s [Orientation] occupied by at least one of the
-    /// block's cells.
-    pub fn col_range(&self) -> RangeInclusive<usize> {
-        self.top_left.1..=self.bottom_right.1
-    }
-}
-
-/// A block's Rotation is the combination of its [Orientation] with its local coordinate space, and
-/// the [BoundingBox] describing the range of cells it occupies within that space.
-#[derive(Debug, Clone, Copy)]
-pub struct Rotation {
-    pub orientation: Orientation,
-    pub bounding_box: BoundingBox,
-}
-
-impl Rotation {
-    pub fn orientation(&self) -> Orientation {
-        self.orientation
-    }
-
-    pub fn bounding_box(&self) -> BoundingBox {
-        self.bounding_box
-    }
-
-    /// Returns an iterator of the positions occupied by the block in its local coordinate space.
-    pub fn positions(&self) -> impl Iterator<Item = Position> {
-        const BLOCK_CELLS: usize = 4;
-        let mut positions = Vec::with_capacity(BLOCK_CELLS);
-        let bb = self.bounding_box;
-        for r in bb.row_range() {
-            for c in bb.col_range() {
-                if self.orientation[r][c] == 1 {
-                    positions.push((r, c))
-                }
-            }
-        }
-
-        positions.into_iter()
-    }
-}
-
-/// The complete set of rotations for a given [BlockType].
-type Rotations = [Rotation; 4];
-
-#[rustfmt::skip]
-const I_ROTATIONS: &Rotations = &[
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 0, 0, 0],
-            &[1, 1, 1, 1],
-            &[0, 0, 0, 0],
-            &[0, 0, 0, 0],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (1, 0),
-            bottom_right: (1, 3),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 0, 1, 0],
-            &[0, 0, 1, 0],
-            &[0, 0, 1, 0],
-            &[0, 0, 1, 0],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (0, 2),
-            bottom_right: (3, 2),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 0, 0, 0],
-            &[0, 0, 0, 0],
-            &[1, 1, 1, 1],
-            &[0, 0, 0, 0],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (2, 0),
-            bottom_right: (2, 3),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 1, 0, 0],
-            &[0, 1, 0, 0],
-            &[0, 1, 0, 0],
-            &[0, 1, 0, 0],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (0, 1),
-            bottom_right: (3, 1),
-        },
-    },
-];
-
-#[rustfmt::skip]
-const J_ROTATIONS: &Rotations = &[
-    Rotation {
-        orientation: Orientation(&[
-            &[1, 0, 0],
-            &[1, 1, 1],
-            &[0, 0, 0],
-        ]),
-        bounding_box: BoundingBox{
-            top_left: (0, 0),
-            bottom_right: (1, 2),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 1, 1],
-            &[0, 1, 0],
-            &[0, 1, 0],
-        ]),
-        bounding_box: BoundingBox{
-            top_left: (0, 1),
-            bottom_right: (2, 2),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 0, 0],
-            &[1, 1, 1],
-            &[0, 0, 1],
-        ]),
-        bounding_box: BoundingBox{
-            top_left: (1, 0),
-            bottom_right:(2, 2),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[0, 1, 0],
-            &[0, 1, 0],
-            &[1, 1, 0],
-        ]),
-        bounding_box: BoundingBox{
-            top_left: (0, 0),
-            bottom_right: (2, 1),
-        },
-    }
-];
-
-// Repeating the single orientation for the unique O block means we don't need any special case code
-// to handle it.
-#[rustfmt::skip]
-const O_ROTATIONS: &Rotations = &[
-    Rotation {
-        orientation: Orientation(&[
-            &[1, 1],
-            &[1, 1],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (0, 0),
-            bottom_right:(1, 1),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[1, 1],
-            &[1, 1],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (0, 0),
-            bottom_right:(1, 1),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[1, 1],
-            &[1, 1],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (0, 0),
-            bottom_right:(1, 1),
-        },
-    },
-    Rotation {
-        orientation: Orientation(&[
-            &[1, 1],
-            &[1, 1],
-        ]),
-        bounding_box: BoundingBox {
-            top_left: (0, 0),
-            bottom_right:(1, 1),
-        },
-    },
-];
+type Position = (usize, usize);
 
 // TODO: Update this as new block types are added.
 const N_BLOCK_TYPES: u8 = 3;
@@ -272,13 +21,21 @@ pub enum BlockType {
 }
 
 impl BlockType {
-    /// Returns all the orientations a block may be rotated into.
+    /// Returns all possible rotations of the block type.
     fn rotations(&self) -> &'static Rotations {
         match self {
             I => I_ROTATIONS,
             J => J_ROTATIONS,
             O => O_ROTATIONS,
         }
+    }
+}
+
+impl ops::Index<RotationIndex> for BlockType {
+    type Output = Rotation;
+
+    fn index(&self, index: RotationIndex) -> &Self::Output {
+        &self.rotations()[index]
     }
 }
 
@@ -289,66 +46,6 @@ impl fmt::Display for BlockType {
             J => writeln!(f, "J"),
             O => writeln!(f, "O"),
         }
-    }
-}
-
-/// The state of a block in play.
-#[derive(Copy, Clone, Debug)]
-pub struct Block {
-    block_type: BlockType,
-    rotation_counter: usize,
-}
-
-impl Block {
-    pub fn new(block_type: BlockType) -> Self {
-        Self {
-            block_type,
-            rotation_counter: 0,
-        }
-    }
-
-    pub fn block_type(&self) -> BlockType {
-        self.block_type
-    }
-
-    pub fn width(&self) -> usize {
-        let bounding_box = self.rotation().bounding_box;
-        bounding_box.bottom_right.1 - bounding_box.top_left.1 + 1
-    }
-
-    pub fn height(&self) -> usize {
-        let bounding_box = self.rotation().bounding_box;
-        bounding_box.bottom_right.0 - bounding_box.top_left.0 + 1
-    }
-
-    /// Returns the [Block]'s current [Rotation].
-    pub fn rotation(&self) -> &'static Rotation {
-        &self.block_type.rotations()[self.rotation_counter]
-    }
-
-    /// Rotates the [Block] clockwise, returning its new [Rotation].
-    pub fn rotate_clockwise(&mut self) -> &'static Rotation {
-        self.rotation_counter = (self.rotation_counter + 1) % 4;
-        self.rotation()
-    }
-
-    /// Rotates the [Block] counter-clockwise, returning its new [Rotation].
-    pub fn rotate_counter_clockwise(&mut self) -> &'static Rotation {
-        // usize::MAX gives the correct index % 4 even when underflow occurs.
-        self.rotation_counter = (self.rotation_counter - 1) % 4;
-        self.rotation()
-    }
-}
-
-impl fmt::Display for Block {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.rotation().orientation)
-    }
-}
-
-impl From<BlockType> for Block {
-    fn from(block_type: BlockType) -> Self {
-        Self::new(block_type)
     }
 }
 
@@ -366,15 +63,263 @@ impl<R: Rng> BlockGenerator<R> {
         Self { rng, sampler }
     }
 
-    pub fn block(&mut self) -> Block {
+    pub fn block(&mut self) -> BlockType {
         match self.sampler.sample(&mut self.rng) {
-            1 => I.into(),
-            2 => J.into(),
-            3 => O.into(),
+            1 => I,
+            2 => J,
+            3 => O,
             i => unreachable!(
-                "Only {} block types are implemented, but sampler returned {}",
-                N_BLOCK_TYPES, i
+                "Only {N_BLOCK_TYPES} block types are implemented, but sampler returned {i}",
             ),
         }
+    }
+}
+
+/// A single rotation of a block situated in a local coordinate space. Conceptually, this is a 2D
+/// matrix, but the matrix itself isn't required to implement the game.
+#[derive(Debug, Clone)]
+struct Rotation {
+    /// The positive vertical offset of the top of the block from the local coordinate space's
+    /// origin.
+    vertical_offset: usize,
+
+    /// The positive horizontal offset of the left of the block from the local coordinate space's
+    /// origin.
+    horizontal_offset: usize,
+
+    /// The width of the block.
+    width: usize,
+
+    /// The height of the block.
+    height: usize,
+
+    /// The positions occupied by the block in its local coordinate space.
+    positions: [Position; 4],
+}
+
+impl Rotation {
+    fn vertical_offset(&self) -> usize {
+        self.vertical_offset
+    }
+
+    fn horizontal_offset(&self) -> usize {
+        self.horizontal_offset
+    }
+
+    fn height(&self) -> usize {
+        self.height
+    }
+
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    /// Returns an iterator over the positions occupied by the block in its local coordinate space.
+    fn positions(&self) -> impl Iterator<Item = &Position> {
+        self.positions.iter()
+    }
+}
+
+/// A complete set of four rotations for a [BlockType].
+#[derive(Debug, Clone)]
+struct Rotations([Rotation; 4]);
+
+/// Type-safe wrapping type for indexing [Rotations], constrained to the range 0..4.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+struct RotationIndex(usize);
+
+impl RotationIndex {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn inc(&mut self) {
+        self.0 = self.0.wrapping_add(1) % 4
+    }
+
+    fn dec(&mut self) {
+        self.0 = self.0.wrapping_sub(1) % 4
+    }
+}
+
+impl ops::Index<RotationIndex> for Rotations {
+    type Output = Rotation;
+
+    fn index(&self, index: RotationIndex) -> &Self::Output {
+        &self.0[index.0]
+    }
+}
+
+#[rustfmt::skip]
+const I_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 1,
+        horizontal_offset: 0,
+        width: 4,
+        height: 1,
+        positions: [(1, 0), (1, 1), (1, 2), (1, 3)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 2,
+        width: 1,
+        height: 4,
+        positions: [(0, 2), (1, 2), (2, 2), (3, 2)],
+    },
+    Rotation {
+        vertical_offset: 2,
+        horizontal_offset: 0,
+        width: 4,
+        height: 1,
+        positions: [(2, 0), (2, 1), (2, 2), (2, 3)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 1,
+        width: 1,
+        height: 4,
+        positions: [(0, 1), (1, 1), (2, 1), (3, 1)],
+    },
+]);
+
+#[rustfmt::skip]
+const J_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(0, 0), (1, 0), (1, 1), (1, 2)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 1,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (0, 2), (1, 1), (2, 1)],
+    },
+    Rotation {
+        vertical_offset: 1,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(1, 0), (1, 1), (1, 2), (2, 2)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (1, 1), (2, 0), (2, 1)],
+    },
+]);
+
+#[rustfmt::skip]
+const O_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 2,
+        positions: [(0, 0), (0, 1), (1, 0), (1, 1)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 2,
+        positions: [(0, 0), (0, 1), (1, 0), (1, 1)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 2,
+        positions: [(0, 0), (0, 1), (1, 0), (1, 1)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 2,
+        positions: [(0, 0), (0, 1), (1, 0), (1, 1)],
+    },
+]);
+
+#[derive(Debug, Clone)]
+pub struct ActiveBlock {
+    // The row-column coordinates of the top-left corner of the block's [BoundingBox].
+    top_left: Position,
+    block_type: BlockType,
+    rotation_idx: RotationIndex,
+}
+
+impl ActiveBlock {
+    pub fn new(block_type: BlockType) -> Self {
+        let rotation_idx = RotationIndex::new();
+        let rotation = &block_type[rotation_idx];
+
+        let height = rotation.height();
+        debug_assert!(
+            height <= 2,
+            "Block starting height was {}. Any height greater than 2 places it out of bounds.",
+            height
+        );
+
+        let width = rotation.width();
+        debug_assert!(
+            width <= BOARD_COLS,
+            "Block width {} exceeds board width {}",
+            width,
+            BOARD_COLS,
+        );
+
+        // The initial row coordinate is the lowest possible row in the two-row buffer zone that
+        // places the block fully out of sight of the user.
+        //
+        // For example, the I block's initial position is lying horizontally on the 1st row. The
+        // O block's initial position places its top-left corner on the 0th row.
+        let r = 2 - height;
+
+        // The initial column coordinate places the block approximately in the center of the board.
+        //
+        // For example, on a standard 10-column board, the I block's leftmost cell falls in row[3],
+        // while the O and S blocks' fall in row[4]. This gives a one-cell rightwards bias to
+        // three-cell-wide blocks.
+        let c = BOARD_COLS / 2 - width / 2;
+
+        Self {
+            top_left: (r, c),
+            block_type,
+            rotation_idx,
+        }
+    }
+
+    // Returns the board-space coordinates of the top-left cell of the ActiveBlock.
+    fn top_left(&self) -> Position {
+        self.top_left
+    }
+
+    fn rotation(&self) -> &Rotation {
+        &self.block_type[self.rotation_idx]
+    }
+
+    /// Returns an iterator of the positions of the block's cells in board space in order of
+    /// increasing row then column.
+    pub fn board_positions(&self) -> impl Iterator<Item = Position> {
+        let (top, left) = self.top_left();
+        self.rotation().positions().map(move |(block_r, block_c)| {
+            let r = top + block_r - self.rotation().vertical_offset();
+            let c = left + block_c - self.rotation().horizontal_offset();
+            (r, c)
+        })
+    }
+
+    pub fn move_down(&mut self) {
+        self.top_left.0 = self.top_left.0.saturating_add(1)
+    }
+
+    pub fn move_up(&mut self) {
+        self.top_left.0 = self.top_left.0.saturating_sub(1)
     }
 }
