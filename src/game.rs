@@ -10,12 +10,20 @@ use crate::{
 /// The maxiumum number of blocks that may be queued.
 const QUEUE_LEN: usize = 3;
 
+/// A direction of movement or rotation.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Direction {
+    Left,
+    Right,
+}
+
 // The [GameState] is updated in response to events passed to [GameState::update]. This decouples
 // the representation of the game's state from concepts such as the game loop.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Event {
-    Move,
-    Rotate,
+    Quit,
+    Move(Direction),
+    Rotate(Direction),
     Gravity,
 }
 
@@ -82,6 +90,7 @@ impl<R: Rng> GameState<R> {
 
         match event {
             Gravity => self.handle_gravity(),
+            Move(direction) => self.handle_move(direction),
             _ => unimplemented!(),
         }
     }
@@ -122,6 +131,20 @@ impl<R: Rng> GameState<R> {
         self.active_block = ActiveBlock::new(next_block);
         self.queue.push_back(self.block_generator.block());
         self.queue.make_contiguous();
+    }
+
+    fn handle_move(&mut self, direction: Direction) {
+        let undo = if direction == Direction::Left {
+            self.active_block.move_left();
+            ActiveBlock::move_right
+        } else {
+            self.active_block.move_right();
+            ActiveBlock::move_left
+        };
+
+        if self.board.collides(&self.active_block) {
+            undo(&mut self.active_block)
+        }
     }
 }
 
