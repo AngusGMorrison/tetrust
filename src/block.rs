@@ -322,4 +322,12 @@ impl ActiveBlock {
     pub fn move_up(&mut self) {
         self.top_left.0 = self.top_left.0.saturating_sub(1)
     }
+
+    pub fn move_left(&mut self) {
+        self.top_left.1 = self.top_left.1.saturating_sub(1)
+    }
+
+    pub fn move_right(&mut self) {
+        self.top_left.1 = self.top_left.1.saturating_add(1)
+    }
 }

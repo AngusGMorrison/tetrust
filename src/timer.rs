@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Tick {
     pub gravity: bool,
+    pub input: bool,
 }
 
 /// Ticks at a constant rate, returning the events that should be triggered on each tick. Must be
@@ -16,6 +17,9 @@ pub struct GameTimer {
     // The number of ticks after which gravity should be applied.
     gravity_ticks: u64,
 
+    // The number of ticks after which user input should be read.
+    input_ticks: u64,
+
     // The total number of ticks elapsed.
     tick_count: u64,
 }
@@ -23,11 +27,12 @@ pub struct GameTimer {
 impl GameTimer {
     /// Instantiates a new [GameTimer] that ticks every `tick_interval` and applies gravity every
     /// `gravity_ticks`.
-    pub fn new(tick_interval: Duration, gravity_ticks: u64) -> Self {
+    pub fn new(tick_interval: Duration, gravity_ticks: u64, input_ticks: u64) -> Self {
         Self {
             interval_timer: IntervalTimer::new(tick_interval),
             tick_count: 0,
             gravity_ticks,
+            input_ticks
         }
     }
 
@@ -44,20 +49,13 @@ impl GameTimer {
     /// Returns [Some(Tick)] if the timer has ticked, with the fields of [Tick] indicating which
     /// events are scheduled to occur on that tick.
     pub fn update(&mut self) -> Option<Tick> {
-        let ticked = self.interval_timer.update();
-        if !ticked {
-            return None;
+        if self.interval_timer.update() {
+            // Ticks at the boundary of a u64 will be imperfect... but that's not going to happen.
+            self.tick_count = self.tick_count.wrapping_add(1);
+            Some(self.last_tick())
+        } else {
+            None
         }
-
-        let mut tick = Tick::default();
-
-        // Ticks at the boundary of a u64 will be imperfect... but that's not going to happen.
-        self.tick_count = self.tick_count.wrapping_add(1);
-        if self.tick_count.is_multiple_of(self.gravity_ticks) {
-            tick.gravity = true
-        }
-
-        Some(tick)
     }
 
     /// Returns the remaining duration until the next tick.
@@ -65,6 +63,14 @@ impl GameTimer {
         self.interval_timer
             .next_tick_at
             .saturating_duration_since(Instant::now())
+    }
+
+    // Returns the most recent tick.
+    fn last_tick(&self) -> Tick {
+        Tick {
+            gravity: self.tick_count.is_multiple_of(self.gravity_ticks),
+            input: self.tick_count.is_multiple_of(self.input_ticks),
+        }
     }
 }
 
