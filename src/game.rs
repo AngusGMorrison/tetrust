@@ -91,6 +91,7 @@ impl<R: Rng> GameState<R> {
         match event {
             Gravity => self.handle_gravity(),
             Move(direction) => self.handle_move(direction),
+            Rotate(direction) => self.handle_rotate(direction),
             _ => unimplemented!(),
         }
     }
@@ -140,6 +141,20 @@ impl<R: Rng> GameState<R> {
         } else {
             self.active_block.move_right();
             ActiveBlock::move_left
+        };
+
+        if self.board.collides(&self.active_block) {
+            undo(&mut self.active_block)
+        }
+    }
+
+    fn handle_rotate(&mut self, direction: Direction) {
+        let undo = if direction == Direction::Left {
+            self.active_block.rotate_counter_clockwise();
+            ActiveBlock::rotate_clockwise
+        } else {
+            self.active_block.rotate_clockwise();
+            ActiveBlock::rotate_counter_clockwise
         };
 
         if self.board.collides(&self.active_block) {

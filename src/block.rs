@@ -330,4 +330,12 @@ impl ActiveBlock {
     pub fn move_right(&mut self) {
         self.top_left.1 = self.top_left.1.saturating_add(1)
     }
+
+    pub fn rotate_clockwise(&mut self) {
+        self.rotation_idx.inc();
+    }
+
+    pub fn rotate_counter_clockwise(&mut self) {
+        self.rotation_idx.dec();
+    }
 }
