@@ -65,10 +65,12 @@ fn poll_input(poll_duration: Duration) -> io::Result<Option<Event>> {
         match termevent::read()? {
             TermEvent::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 match key_event.code {
-                    KeyCode::Char('q') => Ok(Some(Event::Quit)),
                     KeyCode::Left => Ok(Some(Event::Move(Direction::Left))),
                     KeyCode::Right => Ok(Some(Event::Move(Direction::Right))),
                     KeyCode::Down => Ok(Some(Event::Gravity)),
+                    KeyCode::Char('q') => Ok(Some(Event::Quit)),
+                    KeyCode::Char('z') => Ok(Some(Event::Rotate(Direction::Left))),
+                    KeyCode::Char('x') => Ok(Some(Event::Rotate(Direction::Right))),
                     _ => Ok(None),
                 }
             }
