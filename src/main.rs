@@ -7,9 +7,14 @@ use std::{
 use crossterm::event::{self as termevent, KeyCode};
 use crossterm::event::{Event as TermEvent, KeyEventKind};
 use rand::rngs::ThreadRng;
-use ratatui::widgets::Paragraph;
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::Stylize,
+    text::Text,
+};
 use tetrust::{
     block::BlockGenerator,
+    board::{BOARD_COLS, BOARD_ROWS, PLAYABLE_ROWS},
     game::{Direction, Event, GameState},
     timer::GameTimer,
 };
@@ -51,13 +56,30 @@ fn main() -> io::Result<()> {
     })
 }
 
+const BORDER_THICKNESS: u16 = 1;
+
+const GAME_AREA_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
+
+/// The number of rendered columns is double the columns of the board, since square cells are
+/// rendered using two █ characters: ██.
+const GAME_AREA_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+
 fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
-    let text = if state.game_over() {
-        "GAME_OVER".to_string()
-    } else {
-        state.to_string()
-    };
-    frame.render_widget(Paragraph::new(text), frame.area())
+    let header = Text::from_iter([
+        "TETRUST".bold(),
+        "<q> Quit | <←|→> Move block | <↓> Drop block | <z|x> Rotate block".into(),
+    ]);
+
+    let layout = Layout::vertical([
+        Constraint::Length(header.height() as u16),
+        Constraint::Length(GAME_AREA_HEIGHT),
+    ]);
+    let [text_area, mut game_area] = frame.area().layout(&layout);
+    frame.render_widget(header.centered(), text_area);
+
+    let game_area_layout = Layout::horizontal([GAME_AREA_WIDTH]);
+    [game_area] = game_area.layout::<1>(&game_area_layout);
+    frame.render_widget(state.canvas(), game_area)
 }
 
 fn poll_input(poll_duration: Duration) -> io::Result<Option<Event>> {

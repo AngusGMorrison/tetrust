@@ -7,7 +7,7 @@ use rand_distr::{Distribution, Uniform};
 use crate::board::BOARD_COLS;
 
 /// Row-column coordinates for matrix access.
-type Position = (usize, usize);
+pub type Position = (usize, usize);
 
 // TODO: Update this as new block types are added.
 const N_BLOCK_TYPES: u8 = 3;
@@ -293,6 +293,10 @@ impl ActiveBlock {
             block_type,
             rotation_idx,
         }
+    }
+
+    pub(crate) fn block_type(&self) -> BlockType {
+        self.block_type
     }
 
     // Returns the board-space coordinates of the top-left cell of the ActiveBlock.

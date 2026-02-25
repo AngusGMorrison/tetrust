@@ -2,9 +2,14 @@ use std::fmt;
 
 use crate::block::ActiveBlock;
 
-/// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
-/// rendered to the user.
-pub const BOARD_ROWS: usize = 22;
+/// The height of the invisible buffer zone used for spawning blocks.
+pub const BUFFER_ZONE_ROWS: usize = 2;
+
+/// The number of rows rendered to the player.
+pub const PLAYABLE_ROWS: usize = 20;
+
+/// The total number of rows on the board.
+pub const BOARD_ROWS: usize = BUFFER_ZONE_ROWS + PLAYABLE_ROWS;
 
 /// The number of columns on the board.
 pub const BOARD_COLS: usize = 10;

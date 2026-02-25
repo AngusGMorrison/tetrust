@@ -1,7 +1,14 @@
 use std::{collections::VecDeque, fmt};
 
 use rand::Rng;
+use ratatui::style::Stylize;
+use ratatui::symbols::Marker;
+use ratatui::text::{Span};
+use ratatui::widgets::canvas::Canvas;
+use ratatui::widgets::{Block, Widget};
 
+use crate::block::Position;
+use crate::board::{BOARD_ROWS, BUFFER_ZONE_ROWS, PLAYABLE_ROWS};
 use crate::{
     block::{ActiveBlock, BlockGenerator, BlockType},
     board::{BOARD_COLS, Board},
@@ -45,7 +52,8 @@ impl<R: Rng> GameState<R> {
         let active_block = ActiveBlock::new(first_block);
 
         // Populate the queue with random blocks.
-        let mut queue: VecDeque<BlockType> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
+        let mut queue: VecDeque<BlockType> =
+            (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
         queue.make_contiguous(); // simplifies returning the queue to the game loop
 
         GameState {
@@ -161,6 +169,63 @@ impl<R: Rng> GameState<R> {
             undo(&mut self.active_block)
         }
     }
+
+    pub fn canvas(&self) -> impl Widget {
+        Canvas::default()
+            // Bordering the canvas adds 2 to its vertical and horizontal dimensions. The layout
+            // it's rendered to must provide exactly enough room for the board and its borders to
+            // avoid artifacts from the resolution mismatch.
+            .block(Block::bordered().title("Tetrust"))
+            // x_bounds and y_bounds define the canvas' viewport - inside its borders.
+            //
+            // Due to ratatui's internal rendering logic, stepping by two columns on each loop
+            // iteration to render double-width blocks (██), requires a negative x-offset to avoid
+            // blocks slipping behind the left border of the canvas.
+            .x_bounds([-1.0, (BOARD_COLS * 2) as f64 - 1.0])
+            // The y-bounds don't require an offset, since we're stepping by one row each time.
+            .y_bounds([0.0, (BOARD_ROWS - BUFFER_ZONE_ROWS - 1) as f64])
+            .marker(Marker::HalfBlock)
+            .paint(|ctx| {
+                let mut block_positions = self.active_block.board_positions().peekable();
+                let stylize = stylizer(self.active_block.block_type());
+                for (ir, r) in self.board.iter().skip(2).enumerate() {
+                    for (ic, c) in r.iter().enumerate() {
+                        let (x, y) = to_terminal_coords((ir, ic));
+                        match block_positions.peek() {
+                            Some((m, n)) if *m == ir + BUFFER_ZONE_ROWS && *n == ic => {
+                                ctx.print(x, y, stylize("██"));
+                                block_positions.next();
+                            }
+                            _ => {
+                                if *c == 1 {
+                                    ctx.print(x, y, "██".black());
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+    }
+}
+
+/// Converts a (row, col) board position to (x, y) terminal coordinates, where y = 0 at the bottom
+/// of the terminal area.
+fn to_terminal_coords((row, col): Position) -> (f64, f64) {
+    (
+        // Widths are doubled, since square tiles are achieved using two █ characters: ██.
+        (col * 2) as f64,
+        // Rows are counted from the bottom of the area instead of the top.
+        (PLAYABLE_ROWS - row - 1) as f64,
+    )
+}
+
+fn stylizer<'a>(block_type: BlockType) -> fn(&'a str) -> Span<'a> {
+    use BlockType::*;
+    match block_type {
+        I => Stylize::yellow,
+        J => Stylize::green,
+        O => Stylize::red,
+    }
 }
 
 impl<R: Rng> fmt::Display for GameState<R> {
@@ -177,11 +242,11 @@ impl<R: Rng> fmt::Display for GameState<R> {
             for (j, v) in r.iter().enumerate() {
                 match block_positions.peek() {
                     Some((m, n)) if *m == i && *n == j => {
-                        write!(f, "█")?;
+                        write!(f, "▀")?;
                         block_positions.next();
                     }
                     _ => {
-                        let symbol = if *v == 1 { "█" } else { " " };
+                        let symbol = if *v == 1 { "▀" } else { " " };
                         write!(f, "{symbol}")?;
                     }
                 }
