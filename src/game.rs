@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, fmt};
+use std::collections::VecDeque;
 
 use rand::Rng;
 use ratatui::style::Stylize;
 use ratatui::symbols::Marker;
-use ratatui::text::{Span};
+use ratatui::text::Span;
 use ratatui::widgets::canvas::Canvas;
 use ratatui::widgets::{Block, Widget};
 
@@ -197,8 +197,8 @@ impl<R: Rng> GameState<R> {
                                 block_positions.next();
                             }
                             _ => {
-                                if *c == 1 {
-                                    ctx.print(x, y, "██".black());
+                                if let Some(block_type) = c {
+                                    ctx.print(x, y, stylizer(*block_type)("██"));
                                 }
                             }
                         }
@@ -216,44 +216,14 @@ fn to_terminal_coords((row, col): Position) -> (f64, f64) {
         (col * 2) as f64,
         // Rows are counted from the bottom of the area instead of the top.
         (PLAYABLE_ROWS - row - 1) as f64,
-    )
+    )   
 }
 
 fn stylizer<'a>(block_type: BlockType) -> fn(&'a str) -> Span<'a> {
     use BlockType::*;
     match block_type {
-        I => Stylize::yellow,
-        J => Stylize::green,
+        I => Stylize::blue,
+        J => Stylize::cyan,
         O => Stylize::red,
-    }
-}
-
-impl<R: Rng> fmt::Display for GameState<R> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        let mut block_positions = self.active_block.board_positions().peekable();
-        for (i, r) in self.board.iter().enumerate() {
-            if i == 2 {
-                // render the boundary between the buffer zone and the visible board
-                writeln!(f, "|{}|", "—".repeat(BOARD_COLS))?;
-            }
-
-            write!(f, "|")?;
-            for (j, v) in r.iter().enumerate() {
-                match block_positions.peek() {
-                    Some((m, n)) if *m == i && *n == j => {
-                        write!(f, "▀")?;
-                        block_positions.next();
-                    }
-                    _ => {
-                        let symbol = if *v == 1 { "▀" } else { " " };
-                        write!(f, "{symbol}")?;
-                    }
-                }
-            }
-            writeln!(f, "|")?;
-        }
-        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        Ok(())
     }
 }

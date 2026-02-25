@@ -13,7 +13,7 @@ pub type Position = (usize, usize);
 const N_BLOCK_TYPES: u8 = 3;
 
 /// The varieties of block that may be seen in a game.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BlockType {
     I,
     J,

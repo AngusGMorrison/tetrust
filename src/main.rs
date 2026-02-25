@@ -14,7 +14,7 @@ use ratatui::{
 };
 use tetrust::{
     block::BlockGenerator,
-    board::{BOARD_COLS, BOARD_ROWS, PLAYABLE_ROWS},
+    board::{BOARD_COLS, PLAYABLE_ROWS},
     game::{Direction, Event, GameState},
     timer::GameTimer,
 };
