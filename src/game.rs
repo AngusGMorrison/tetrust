@@ -186,19 +186,24 @@ impl<R: Rng> GameState<R> {
             .y_bounds([0.0, (BOARD_ROWS - BUFFER_ZONE_ROWS - 1) as f64])
             .marker(Marker::HalfBlock)
             .paint(|ctx| {
-                let mut block_positions = self.active_block.board_positions().peekable();
-                let stylize = stylizer(self.active_block.block_type());
-                for (ir, r) in self.board.iter().skip(2).enumerate() {
-                    for (ic, c) in r.iter().enumerate() {
-                        let (x, y) = to_terminal_coords((ir, ic));
-                        match block_positions.peek() {
-                            Some((m, n)) if *m == ir + BUFFER_ZONE_ROWS && *n == ic => {
-                                ctx.print(x, y, stylize("██"));
-                                block_positions.next();
+                // Iterate over all cells of the board and active block.
+                let mut active_block_positions = self.active_block.board_positions().peekable();
+                for (i_row, row) in self.board.iter().skip(BUFFER_ZONE_ROWS).enumerate() {
+                    for (i_col, cell) in row.iter().enumerate() {
+                        let (x, y) = to_terminal_coords((i_row, i_col));
+                        match active_block_positions.peek() {
+                            // If the current position is an active block position, render the
+                            // current active block cell and advance the iterator to the next.
+                            Some((i_ab_row, i_ab_col))
+                                if *i_ab_row == i_row + BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
+                            {
+                                ctx.print(x, y, self.active_block.to_span());
+                                active_block_positions.next();
                             }
+                            // Otherwise, render the fixed cell from the board.
                             _ => {
-                                if let Some(block_type) = c {
-                                    ctx.print(x, y, stylizer(*block_type)("██"));
+                                if let Some(block_type) = cell {
+                                    ctx.print(x, y, block_type.to_span());
                                 }
                             }
                         }
@@ -216,14 +221,22 @@ fn to_terminal_coords((row, col): Position) -> (f64, f64) {
         (col * 2) as f64,
         // Rows are counted from the bottom of the area instead of the top.
         (PLAYABLE_ROWS - row - 1) as f64,
-    )   
+    )
 }
 
-fn stylizer<'a>(block_type: BlockType) -> fn(&'a str) -> Span<'a> {
-    use BlockType::*;
-    match block_type {
-        I => Stylize::blue,
-        J => Stylize::cyan,
-        O => Stylize::red,
+impl BlockType {
+    fn to_span(self) -> Span<'static> {
+        use BlockType::*;
+        match self {
+            I => "██".blue(),
+            J => "██".cyan(),
+            O => "██".red(),
+        }
+    }
+}
+
+impl ActiveBlock {
+    fn to_span(&self) -> Span<'static> {
+        self.block_type().to_span()
     }
 }
