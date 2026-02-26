@@ -4,16 +4,16 @@ use BlockType::*;
 use rand::Rng;
 use rand_distr::{Distribution, Uniform};
 
-use crate::board::BOARD_COLS;
+use crate::board::{BOARD_COLS, BUFFER_ZONE_ROWS};
 
 /// Row-column coordinates for matrix access.
-type Position = (usize, usize);
+pub type Position = (usize, usize);
 
 // TODO: Update this as new block types are added.
 const N_BLOCK_TYPES: u8 = 3;
 
 /// The varieties of block that may be seen in a game.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BlockType {
     I,
     J,
@@ -248,8 +248,13 @@ const O_ROTATIONS: &Rotations = &Rotations([
 
 #[derive(Debug, Clone)]
 pub struct ActiveBlock {
-    // The row-column coordinates of the top-left corner of the block's [BoundingBox].
-    top_left: Position,
+    // The row-column coordinates of the top-left corner of the block's virtual bounding box on the
+    // board.
+    //
+    // The column coordinate of the box is allowed to be negative since it may leave the left bounds
+    // of the board while all of the block's cells remain inbounds (either vertical alignment of an
+    // I block, for example).
+    top_left: (usize, isize),
     block_type: BlockType,
     rotation_idx: RotationIndex,
 }
@@ -274,29 +279,29 @@ impl ActiveBlock {
             BOARD_COLS,
         );
 
-        // The initial row coordinate is the lowest possible row in the two-row buffer zone that
-        // places the block fully out of sight of the user.
-        //
-        // For example, the I block's initial position is lying horizontally on the 1st row. The
-        // O block's initial position places its top-left corner on the 0th row.
-        let r = 2 - height;
+        // Place the bounding box so that the block lands at the bottom of the buffer zone.
+        let r = BUFFER_ZONE_ROWS - rotation.vertical_offset() - height;
 
         // The initial column coordinate places the block approximately in the center of the board.
         //
         // For example, on a standard 10-column board, the I block's leftmost cell falls in row[3],
         // while the O and S blocks' fall in row[4]. This gives a one-cell rightwards bias to
         // three-cell-wide blocks.
-        let c = BOARD_COLS / 2 - width / 2;
+        let c = BOARD_COLS / 2 - rotation.horizontal_offset() - width / 2;
 
         Self {
-            top_left: (r, c),
+            top_left: (r, c as isize),
             block_type,
             rotation_idx,
         }
     }
 
+    pub(crate) fn block_type(&self) -> BlockType {
+        self.block_type
+    }
+
     // Returns the board-space coordinates of the top-left cell of the ActiveBlock.
-    fn top_left(&self) -> Position {
+    fn top_left(&self) -> (usize, isize) {
         self.top_left
     }
 
@@ -309,8 +314,11 @@ impl ActiveBlock {
     pub fn board_positions(&self) -> impl Iterator<Item = Position> {
         let (top, left) = self.top_left();
         self.rotation().positions().map(move |(block_r, block_c)| {
-            let r = top + block_r - self.rotation().vertical_offset();
-            let c = left + block_c - self.rotation().horizontal_offset();
+            let r = top + block_r;
+
+            // Unsigned addition will result in impossibly large values of c when a cell is outside
+            // the left bounds of the board. This is used to detect collisions.
+            let c = (left as usize).wrapping_add(*block_c);
             (r, c)
         })
     }

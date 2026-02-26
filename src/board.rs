@@ -1,17 +1,22 @@
 use std::fmt;
 
-use crate::block::ActiveBlock;
+use crate::block::{ActiveBlock, BlockType};
 
-/// The number of rows on the board. The first two rows are a buffer for spawning blocks and aren't
-/// rendered to the user.
-pub const BOARD_ROWS: usize = 22;
+/// The height of the invisible buffer zone used for spawning blocks.
+pub const BUFFER_ZONE_ROWS: usize = 2;
+
+/// The number of rows rendered to the player.
+pub const PLAYABLE_ROWS: usize = 20;
+
+/// The total number of rows on the board.
+pub const BOARD_ROWS: usize = BUFFER_ZONE_ROWS + PLAYABLE_ROWS;
 
 /// The number of columns on the board.
 pub const BOARD_COLS: usize = 10;
 
 /// The play space. A 2D matrix where a square is one if occupied and zero otherwise.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Board([[u8; BOARD_COLS]; BOARD_ROWS]);
+pub struct Board([[Option<BlockType>; BOARD_COLS]; BOARD_ROWS]);
 
 impl Board {
     /// Instantiates an empty board.
@@ -22,7 +27,7 @@ impl Board {
     /// Instatiates a full board.
     #[cfg(test)]
     fn new_filled() -> Self {
-        Self([[1; BOARD_COLS]; BOARD_ROWS])
+        Self([[Some(BlockType::I); BOARD_COLS]; BOARD_ROWS])
     }
 
     /// Clear continguous rows of occupied squares and consolidate the board, returning the number
@@ -34,7 +39,7 @@ impl Board {
         // when to stop swapping cleared lines upwards.
         let mut highest_occupied_row = 0isize; // isize is simpler to compare in the loop condition below
         for (i, row) in self.0.iter().enumerate() {
-            if row.contains(&1) {
+            if row.iter().any(|v| v.is_some()) {
                 highest_occupied_row = i as isize;
                 break;
             }
@@ -44,13 +49,13 @@ impl Board {
         let mut i = (BOARD_ROWS - 1) as isize; // isize avoids a wrapping sub when highest_occupied_row is 0
         while i >= highest_occupied_row {
             // Skip incomplete rows.
-            if self.0[i as usize].contains(&0) {
+            if self.0[i as usize].iter().any(|v| v.is_none()) {
                 i -= 1;
                 continue;
             }
 
             // Clear completed rows.
-            self.0[i as usize].fill(0);
+            self.0[i as usize].fill(None);
             cleared_row_count += 1;
 
             // Consolidate the board by bubbling cleared rows upwards.
@@ -68,7 +73,8 @@ impl Board {
     pub fn collides(&self, active_block: &ActiveBlock) -> bool {
         active_block
             .board_positions()
-            .any(|pos| pos.0 >= BOARD_ROWS || pos.1 >= BOARD_COLS || self.0[pos.0][pos.1] == 1)
+            // Collisions with the left boundary are detectable by underflow of `pos.1`.
+            .any(|pos| pos.0 >= BOARD_ROWS || pos.1 >= BOARD_COLS || self.0[pos.0][pos.1].is_some())
     }
 
     /// Fills the board cells corresponding to the final position of the active block, fixing the
@@ -76,18 +82,18 @@ impl Board {
     pub fn fix_active_block(&mut self, active_block: &ActiveBlock) {
         active_block
             .board_positions()
-            .for_each(|(r, c)| self.0[r][c] = 1);
+            .for_each(|(r, c)| self.0[r][c] = Some(active_block.block_type()));
     }
 
     /// Returns true if the two-row buffer zone at the top of the board is occupied, which can be
     /// used to detect the game over state.
     pub fn buffer_zone_occupied(&self) -> bool {
-        let occupied = self.0[1].contains(&1);
+        let occupied = self.0[1].iter().any(|v| v.is_some());
 
         #[cfg(debug_assertions)]
         if !occupied {
             debug_assert!(
-                self.0[0].iter().all(|&v| v == 0),
+                self.0[0].iter().all(|v| v.is_none()),
                 "Lower row of buffer zone was empty, but upper row was populated",
             )
         }
@@ -96,13 +102,13 @@ impl Board {
     }
 
     /// Returns an iterator over the board's rows.
-    pub fn iter(&self) -> impl Iterator<Item = &[u8; BOARD_COLS]> {
+    pub fn iter(&self) -> impl Iterator<Item = &[Option<BlockType>; BOARD_COLS]> {
         self.0.iter()
     }
 }
 
-impl From<[[u8; BOARD_COLS]; BOARD_ROWS]> for Board {
-    fn from(value: [[u8; BOARD_COLS]; BOARD_ROWS]) -> Self {
+impl From<[[Option<BlockType>; BOARD_COLS]; BOARD_ROWS]> for Board {
+    fn from(value: [[Option<BlockType>; BOARD_COLS]; BOARD_ROWS]) -> Self {
         Board(value)
     }
 }
@@ -110,7 +116,8 @@ impl From<[[u8; BOARD_COLS]; BOARD_ROWS]> for Board {
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        let row_printer = |f: &mut fmt::Formatter<'_>, row: &[u8; 10]| {
+        let row_printer = |f: &mut fmt::Formatter<'_>, row: &[Option<BlockType>; 10]| {
+            let row = row.map(|o| o.map_or(" ".into(), |bt| bt.to_string()));
             writeln!(
                 f,
                 "|{}{}{}{}{}{}{}{}{}{}|",
@@ -179,7 +186,7 @@ mod tests {
         #[test]
         fn single_line_no_consolidation() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 1] = [1; BOARD_COLS];
+            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
 
             let expected_lines_cleared = 1;
             let expected_board = Board::new();
@@ -202,8 +209,8 @@ mod tests {
         #[test]
         fn multiple_lines_no_consolidation() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 2] = [1; BOARD_COLS];
-            board.0[BOARD_ROWS - 1] = [1; BOARD_COLS];
+            board.0[BOARD_ROWS - 2] = [Some(BlockType::I); BOARD_COLS];
+            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
 
             let expected_lines_cleared = 2;
             let expected_board = Board::new();
@@ -226,14 +233,58 @@ mod tests {
         #[test]
         fn single_line_with_consolidation() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 3] = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
-            board.0[BOARD_ROWS - 2] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
-            board.0[BOARD_ROWS - 1] = [1; BOARD_COLS];
+            board.0[BOARD_ROWS - 3] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            board.0[BOARD_ROWS - 2] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
+            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
 
             let expected_lines_cleared = 1;
             let mut expected_board = Board::new();
-            expected_board.0[BOARD_ROWS - 2] = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
-            expected_board.0[BOARD_ROWS - 1] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+            expected_board.0[BOARD_ROWS - 2] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            expected_board.0[BOARD_ROWS - 1] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
 
             let lines_cleared = board.clear_lines();
 
@@ -253,15 +304,59 @@ mod tests {
         #[test]
         fn multiple_lines_with_consolidation() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 4] = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
-            board.0[BOARD_ROWS - 3] = [1; BOARD_COLS];
-            board.0[BOARD_ROWS - 2] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
-            board.0[BOARD_ROWS - 1] = [1; BOARD_COLS];
+            board.0[BOARD_ROWS - 4] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            board.0[BOARD_ROWS - 3] = [Some(BlockType::I); BOARD_COLS];
+            board.0[BOARD_ROWS - 2] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
+            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
 
             let expected_lines_cleared = 2;
             let mut expected_board = Board::new();
-            expected_board.0[BOARD_ROWS - 2] = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
-            expected_board.0[BOARD_ROWS - 1] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+            expected_board.0[BOARD_ROWS - 2] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            expected_board.0[BOARD_ROWS - 1] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
 
             let lines_cleared = board.clear_lines();
 

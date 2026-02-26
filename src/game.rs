@@ -1,7 +1,14 @@
-use std::{collections::VecDeque, fmt};
+use std::collections::VecDeque;
 
 use rand::Rng;
+use ratatui::style::Stylize;
+use ratatui::symbols::Marker;
+use ratatui::text::Span;
+use ratatui::widgets::canvas::Canvas;
+use ratatui::widgets::{Block, Widget};
 
+use crate::block::Position;
+use crate::board::{BOARD_ROWS, BUFFER_ZONE_ROWS, PLAYABLE_ROWS};
 use crate::{
     block::{ActiveBlock, BlockGenerator, BlockType},
     board::{BOARD_COLS, Board},
@@ -45,7 +52,8 @@ impl<R: Rng> GameState<R> {
         let active_block = ActiveBlock::new(first_block);
 
         // Populate the queue with random blocks.
-        let mut queue: VecDeque<BlockType> = (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
+        let mut queue: VecDeque<BlockType> =
+            (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
         queue.make_contiguous(); // simplifies returning the queue to the game loop
 
         GameState {
@@ -161,34 +169,74 @@ impl<R: Rng> GameState<R> {
             undo(&mut self.active_block)
         }
     }
-}
 
-impl<R: Rng> fmt::Display for GameState<R> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        let mut block_positions = self.active_block.board_positions().peekable();
-        for (i, r) in self.board.iter().enumerate() {
-            if i == 2 {
-                // render the boundary between the buffer zone and the visible board
-                writeln!(f, "|{}|", "—".repeat(BOARD_COLS))?;
-            }
-
-            write!(f, "|")?;
-            for (j, v) in r.iter().enumerate() {
-                match block_positions.peek() {
-                    Some((m, n)) if *m == i && *n == j => {
-                        write!(f, "█")?;
-                        block_positions.next();
-                    }
-                    _ => {
-                        let symbol = if *v == 1 { "█" } else { " " };
-                        write!(f, "{symbol}")?;
+    pub fn canvas(&self) -> impl Widget {
+        Canvas::default()
+            // Bordering the canvas adds 2 to its vertical and horizontal dimensions. The layout
+            // it's rendered to must provide exactly enough room for the board and its borders to
+            // avoid artifacts from the resolution mismatch.
+            .block(Block::bordered())
+            // x_bounds and y_bounds define the canvas' viewport - inside its borders.
+            //
+            // Due to ratatui's internal rendering logic, stepping by two columns on each loop
+            // iteration to render double-width blocks (██), requires a negative x-offset to avoid
+            // blocks slipping behind the left border of the canvas.
+            .x_bounds([-1.0, (BOARD_COLS * 2) as f64 - 1.0])
+            // The y-bounds don't require an offset, since we're stepping by one row each time.
+            .y_bounds([0.0, (BOARD_ROWS - BUFFER_ZONE_ROWS - 1) as f64])
+            .marker(Marker::HalfBlock)
+            .paint(|ctx| {
+                // Iterate over all cells of the board and active block.
+                let mut active_block_positions = self.active_block.board_positions().peekable();
+                for (i_row, row) in self.board.iter().skip(BUFFER_ZONE_ROWS).enumerate() {
+                    for (i_col, cell) in row.iter().enumerate() {
+                        let (x, y) = to_terminal_coords((i_row, i_col));
+                        match active_block_positions.peek() {
+                            // If the current position is an active block position, render the
+                            // current active block cell and advance the iterator to the next.
+                            Some((i_ab_row, i_ab_col))
+                                if *i_ab_row == i_row + BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
+                            {
+                                ctx.print(x, y, self.active_block.to_span());
+                                active_block_positions.next();
+                            }
+                            // Otherwise, render the fixed cell from the board.
+                            _ => {
+                                if let Some(block_type) = cell {
+                                    ctx.print(x, y, block_type.to_span());
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            writeln!(f, "|")?;
+            })
+    }
+}
+
+/// Converts a (row, col) board position to (x, y) terminal coordinates, where y = 0 at the bottom
+/// of the terminal area.
+fn to_terminal_coords((row, col): Position) -> (f64, f64) {
+    (
+        // Widths are doubled, since square tiles are achieved using two █ characters: ██.
+        (col * 2) as f64,
+        // Rows are counted from the bottom of the area instead of the top.
+        (PLAYABLE_ROWS - row - 1) as f64,
+    )
+}
+
+impl BlockType {
+    fn to_span(self) -> Span<'static> {
+        use BlockType::*;
+        match self {
+            I => "██".blue(),
+            J => "██".cyan(),
+            O => "██".red(),
         }
-        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        Ok(())
+    }
+}
+
+impl ActiveBlock {
+    fn to_span(&self) -> Span<'static> {
+        self.block_type().to_span()
     }
 }

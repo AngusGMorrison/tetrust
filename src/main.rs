@@ -7,15 +7,20 @@ use std::{
 use crossterm::event::{self as termevent, KeyCode};
 use crossterm::event::{Event as TermEvent, KeyEventKind};
 use rand::rngs::ThreadRng;
-use ratatui::widgets::Paragraph;
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::Stylize,
+    text::Text,
+};
 use tetrust::{
     block::BlockGenerator,
+    board::{BOARD_COLS, PLAYABLE_ROWS},
     game::{Direction, Event, GameState},
     timer::GameTimer,
 };
 
 /// The number of ticks that must elapse between applications of gravity.
-const INITIAL_GRAVITY_TICKS: u64 = 12;
+const INITIAL_GRAVITY_TICKS: u64 = 48;
 
 /// The number of ticks that must elapse between reads of user input.
 const INPUT_TICKS: u64 = 1;
@@ -51,13 +56,35 @@ fn main() -> io::Result<()> {
     })
 }
 
+const BORDER_THICKNESS: u16 = 1;
+
+const GAME_AREA_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
+
+/// The number of rendered columns is double the columns of the board, since square cells are
+/// rendered using two █ characters: ██.
+const GAME_AREA_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+
 fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
-    let text = if state.game_over() {
-        "GAME_OVER".to_string()
-    } else {
-        state.to_string()
-    };
-    frame.render_widget(Paragraph::new(text), frame.area())
+    let header = Text::from_iter([
+        "TETRUST".bold(),
+        "<q> Quit | <←|→> Move block | <↓> Drop block | <z|x> Rotate block".into(),
+    ]);
+
+    let layout = Layout::vertical([
+        Constraint::Length(header.height() as u16),
+        Constraint::Length(1),
+        Constraint::Length(GAME_AREA_HEIGHT),
+    ]);
+    let [text_area, _, game_area] = frame.area().layout(&layout);
+    frame.render_widget(header.centered(), text_area);
+
+    let game_area_layout = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(GAME_AREA_WIDTH),
+        Constraint::Fill(1),
+    ]);
+    let [_, game_area, _] = game_area.layout::<3>(&game_area_layout);
+    frame.render_widget(state.canvas(), game_area)
 }
 
 fn poll_input(poll_duration: Duration) -> io::Result<Option<Event>> {
