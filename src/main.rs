@@ -20,7 +20,7 @@ use tetrust::{
 };
 
 /// The number of ticks that must elapse between applications of gravity.
-const INITIAL_GRAVITY_TICKS: u64 = 12;
+const INITIAL_GRAVITY_TICKS: u64 = 48;
 
 /// The number of ticks that must elapse between reads of user input.
 const INPUT_TICKS: u64 = 1;
@@ -72,13 +72,18 @@ fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
 
     let layout = Layout::vertical([
         Constraint::Length(header.height() as u16),
+        Constraint::Length(1),
         Constraint::Length(GAME_AREA_HEIGHT),
     ]);
-    let [text_area, mut game_area] = frame.area().layout(&layout);
+    let [text_area, _, game_area] = frame.area().layout(&layout);
     frame.render_widget(header.centered(), text_area);
 
-    let game_area_layout = Layout::horizontal([GAME_AREA_WIDTH]);
-    [game_area] = game_area.layout::<1>(&game_area_layout);
+    let game_area_layout = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(GAME_AREA_WIDTH),
+        Constraint::Fill(1),
+    ]);
+    let [_, game_area, _] = game_area.layout::<3>(&game_area_layout);
     frame.render_widget(state.canvas(), game_area)
 }
 

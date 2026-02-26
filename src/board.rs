@@ -73,6 +73,7 @@ impl Board {
     pub fn collides(&self, active_block: &ActiveBlock) -> bool {
         active_block
             .board_positions()
+            // Collisions with the left boundary are detectable by underflow of `pos.1`.
             .any(|pos| pos.0 >= BOARD_ROWS || pos.1 >= BOARD_COLS || self.0[pos.0][pos.1].is_some())
     }
 
@@ -232,14 +233,58 @@ mod tests {
         #[test]
         fn single_line_with_consolidation() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 3] = [None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I)];
-            board.0[BOARD_ROWS - 2] = [Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None];
+            board.0[BOARD_ROWS - 3] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            board.0[BOARD_ROWS - 2] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
             board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
 
             let expected_lines_cleared = 1;
             let mut expected_board = Board::new();
-            expected_board.0[BOARD_ROWS - 2] = [None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I)];
-            expected_board.0[BOARD_ROWS - 1] = [Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None];
+            expected_board.0[BOARD_ROWS - 2] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            expected_board.0[BOARD_ROWS - 1] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
 
             let lines_cleared = board.clear_lines();
 
@@ -259,15 +304,59 @@ mod tests {
         #[test]
         fn multiple_lines_with_consolidation() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 4] = [None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I)];
+            board.0[BOARD_ROWS - 4] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
             board.0[BOARD_ROWS - 3] = [Some(BlockType::I); BOARD_COLS];
-            board.0[BOARD_ROWS - 2] = [Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None];
+            board.0[BOARD_ROWS - 2] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
             board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
 
             let expected_lines_cleared = 2;
             let mut expected_board = Board::new();
-            expected_board.0[BOARD_ROWS - 2] = [None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I)];
-            expected_board.0[BOARD_ROWS - 1] = [Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None, Some(BlockType::I), None];
+            expected_board.0[BOARD_ROWS - 2] = [
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+            ];
+            expected_board.0[BOARD_ROWS - 1] = [
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+                Some(BlockType::I),
+                None,
+            ];
 
             let lines_cleared = board.clear_lines();
 

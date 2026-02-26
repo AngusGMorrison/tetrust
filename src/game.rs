@@ -175,7 +175,7 @@ impl<R: Rng> GameState<R> {
             // Bordering the canvas adds 2 to its vertical and horizontal dimensions. The layout
             // it's rendered to must provide exactly enough room for the board and its borders to
             // avoid artifacts from the resolution mismatch.
-            .block(Block::bordered().title("Tetrust"))
+            .block(Block::bordered())
             // x_bounds and y_bounds define the canvas' viewport - inside its borders.
             //
             // Due to ratatui's internal rendering logic, stepping by two columns on each loop
