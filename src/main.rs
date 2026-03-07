@@ -11,6 +11,7 @@ use ratatui::{
     layout::{Constraint, Layout},
     style::Stylize,
     text::Text,
+    widgets::{Block, Borders, Paragraph},
 };
 use tetrust::{
     block::BlockGenerator,
@@ -58,11 +59,19 @@ fn main() -> io::Result<()> {
 
 const BORDER_THICKNESS: u16 = 1;
 
-const GAME_AREA_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
+const BOARD_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
 
 /// The number of rendered columns is double the columns of the board, since square cells are
 /// rendered using two █ characters: ██.
-const GAME_AREA_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+const BOARD_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+
+const SCORE_WIDGET_HEIGHT: u16 = 3;
+
+const SCORE_WIDGET_WIDTH: u16 = 8;
+
+const BOARD_SCORE_PADDING: u16 = 2;
+
+const GAME_AREA_WIDTH: u16 = BOARD_WIDTH + SCORE_WIDGET_WIDTH + BOARD_SCORE_PADDING;
 
 fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
     let header = Text::from_iter([
@@ -73,18 +82,31 @@ fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
     let layout = Layout::vertical([
         Constraint::Length(header.height() as u16),
         Constraint::Length(1),
-        Constraint::Length(GAME_AREA_HEIGHT),
+        Constraint::Length(BOARD_HEIGHT),
     ]);
     let [text_area, _, game_area] = frame.area().layout(&layout);
     frame.render_widget(header.centered(), text_area);
 
     let game_area_layout = Layout::horizontal([
         Constraint::Fill(1),
-        Constraint::Length(GAME_AREA_WIDTH),
+        Constraint::Length(BOARD_WIDTH),
+        Constraint::Length(BOARD_SCORE_PADDING),
+        Constraint::Length(SCORE_WIDGET_WIDTH),
         Constraint::Fill(1),
     ]);
-    let [_, game_area, _] = game_area.layout::<3>(&game_area_layout);
-    frame.render_widget(state.canvas(), game_area)
+
+    let [_, board, _, score_col, _] = game_area.layout::<5>(&game_area_layout);
+    frame.render_widget(state.canvas(), board);
+
+    let [score_widget, _] = score_col.layout(&Layout::vertical([
+        Constraint::Length(SCORE_WIDGET_HEIGHT),
+        Constraint::Fill(1),
+    ]));
+
+    let score = Paragraph::new(Text::from(state.score().to_string()).bold())
+        .right_aligned()
+        .block(Block::new().borders(Borders::ALL).title("Score"));
+    frame.render_widget(score, score_widget);
 }
 
 fn poll_input(poll_duration: Duration) -> io::Result<Option<Event>> {
