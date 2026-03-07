@@ -228,9 +228,13 @@ impl BlockType {
     fn to_span(self) -> Span<'static> {
         use BlockType::*;
         match self {
-            I => "██".blue(),
-            J => "██".cyan(),
-            O => "██".red(),
+            I => "██".cyan(),
+            J => "██".blue(),
+            L => "██".light_red(),
+            O => "██".yellow(),
+            S => "██".green(),
+            T => "██".magenta(),
+            Z => "██".red(),
         }
     }
 }

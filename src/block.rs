@@ -10,14 +10,18 @@ use crate::board::{BOARD_COLS, BUFFER_ZONE_ROWS};
 pub type Position = (usize, usize);
 
 // TODO: Update this as new block types are added.
-const N_BLOCK_TYPES: u8 = 3;
+const N_BLOCK_TYPES: u8 = 7;
 
 /// The varieties of block that may be seen in a game.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BlockType {
     I,
     J,
+    L,
     O,
+    S,
+    T,
+    Z,
 }
 
 impl BlockType {
@@ -26,7 +30,11 @@ impl BlockType {
         match self {
             I => I_ROTATIONS,
             J => J_ROTATIONS,
+            L => L_ROTATIONS,
             O => O_ROTATIONS,
+            S => S_ROTATIONS,
+            T => T_ROTATIONS,
+            Z => Z_ROTATIONS,
         }
     }
 }
@@ -44,7 +52,11 @@ impl fmt::Display for BlockType {
         match self {
             I => writeln!(f, "I"),
             J => writeln!(f, "J"),
+            L => writeln!(f, "L"),
             O => writeln!(f, "O"),
+            S => writeln!(f, "S"),
+            T => writeln!(f, "T"),
+            Z => writeln!(f, "Z"),
         }
     }
 }
@@ -67,7 +79,11 @@ impl<R: Rng> BlockGenerator<R> {
         match self.sampler.sample(&mut self.rng) {
             1 => I,
             2 => J,
-            3 => O,
+            3 => L,
+            4 => O,
+            5 => S,
+            6 => T,
+            7 => Z,
             i => unreachable!(
                 "Only {N_BLOCK_TYPES} block types are implemented, but sampler returned {i}",
             ),
@@ -150,6 +166,12 @@ impl ops::Index<RotationIndex> for Rotations {
     }
 }
 
+// I rotations. All states use a 4×4 bounding box.
+//
+// Rot 0:  . . . .    Rot 1:  . . X .    Rot 2:  . . . .    Rot 3:  . X . .
+//         X X X X            . . X .            . . . .            . X . .
+//         . . . .            . . X .            X X X X            . X . .
+//         . . . .            . . X .            . . . .            . X . .
 #[rustfmt::skip]
 const I_ROTATIONS: &Rotations = &Rotations([
     Rotation {
@@ -182,6 +204,11 @@ const I_ROTATIONS: &Rotations = &Rotations([
     },
 ]);
 
+// J rotations. All states use a 3×3 bounding box.
+//
+// Rot 0:  X . .    Rot 1:  . X X    Rot 2:  . . .    Rot 3:  . X .
+//         X X X            . X .            X X X            . X .
+//         . . .            . X .            . . X            X X .
 #[rustfmt::skip]
 const J_ROTATIONS: &Rotations = &Rotations([
     Rotation {
@@ -214,6 +241,10 @@ const J_ROTATIONS: &Rotations = &Rotations([
     },
 ]);
 
+// O rotations. All states use a 2×2 bounding box.
+//
+// All rotations:  X X
+//                 X X
 #[rustfmt::skip]
 const O_ROTATIONS: &Rotations = &Rotations([
     Rotation {
@@ -243,6 +274,154 @@ const O_ROTATIONS: &Rotations = &Rotations([
         width: 2,
         height: 2,
         positions: [(0, 0), (0, 1), (1, 0), (1, 1)],
+    },
+]);
+
+// L rotations (mirror of J). All states use a 3×3 bounding box.
+//
+// Rot 0:  . . X    Rot 1:  . X .    Rot 2:  . . .    Rot 3:  X X .
+//         X X X            . X .            X X X            . X .
+//         . . .            . X X            X . .            . X .
+#[rustfmt::skip]
+const L_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(0, 2), (1, 0), (1, 1), (1, 2)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 1,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (1, 1), (2, 1), (2, 2)],
+    },
+    Rotation {
+        vertical_offset: 1,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(1, 0), (1, 1), (1, 2), (2, 0)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 3,
+        positions: [(0, 0), (0, 1), (1, 1), (2, 1)],
+    },
+]);
+
+// S rotations. All states use a 3×3 bounding box.
+//
+// Rot 0:  . X X    Rot 1:  . X .    Rot 2:  . . .    Rot 3:  X . .
+//         X X .            . X X            . X X            X X .
+//         . . .            . . X            X X .            . X .
+#[rustfmt::skip]
+const S_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(0, 1), (0, 2), (1, 0), (1, 1)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 1,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (1, 1), (1, 2), (2, 2)],
+    },
+    Rotation {
+        vertical_offset: 1,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(1, 1), (1, 2), (2, 0), (2, 1)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 3,
+        positions: [(0, 0), (1, 0), (1, 1), (2, 1)],
+    },
+]);
+
+// T rotations. All states use a 3×3 bounding box.
+//
+// Rot 0:  . X .    Rot 1:  . X .    Rot 2:  . . .    Rot 3:  . X .
+//         X X X            . X X            X X X            X X .
+//         . . .            . X .            . X .            . X .
+#[rustfmt::skip]
+const T_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(0, 1), (1, 0), (1, 1), (1, 2)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 1,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (1, 1), (1, 2), (2, 1)],
+    },
+    Rotation {
+        vertical_offset: 1,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(1, 0), (1, 1), (1, 2), (2, 1)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (1, 0), (1, 1), (2, 1)],
+    },
+]);
+
+// Z rotations. All states use a 3×3 bounding box.
+//
+// Rot 0:  X X .    Rot 1:  . . X    Rot 2:  . . .    Rot 3:  . X .
+//         . X X            . X X            X X .            X X .
+//         . . .            . X .            . X X            X . .
+#[rustfmt::skip]
+const Z_ROTATIONS: &Rotations = &Rotations([
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(0, 0), (0, 1), (1, 1), (1, 2)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 1,
+        width: 2,
+        height: 3,
+        positions: [(0, 2), (1, 1), (1, 2), (2, 1)],
+    },
+    Rotation {
+        vertical_offset: 1,
+        horizontal_offset: 0,
+        width: 3,
+        height: 2,
+        positions: [(1, 0), (1, 1), (2, 1), (2, 2)],
+    },
+    Rotation {
+        vertical_offset: 0,
+        horizontal_offset: 0,
+        width: 2,
+        height: 3,
+        positions: [(0, 1), (1, 0), (1, 1), (2, 0)],
     },
 ]);
 
