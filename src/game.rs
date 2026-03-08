@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 
 use rand::Rng;
-use ratatui::style::Stylize;
 use ratatui::symbols::Marker;
-use ratatui::text::Span;
 use ratatui::widgets::canvas::Canvas;
 use ratatui::widgets::{Block, Widget};
 
@@ -192,8 +190,14 @@ impl<R: Rng> GameState<R> {
                     for (i_col, cell) in row.iter().enumerate() {
                         let (x, y) = to_terminal_coords((i_row, i_col));
                         match active_block_positions.peek() {
-                            // If the current position is an active block position, render the
-                            // current active block cell and advance the iterator to the next.
+                            // If the current position is an active block position inside the
+                            // buffer zone, skip the cell.
+                            Some((i_ab_row, _)) if *i_ab_row < BUFFER_ZONE_ROWS => {
+                                active_block_positions.next();
+                            }
+                            // If the current position is an active block position which is on the
+                            // visible board, render the current active block cell and advance the
+                            // iterator to the next.
                             Some((i_ab_row, i_ab_col))
                                 if *i_ab_row == i_row + BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
                             {
