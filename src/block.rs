@@ -1,8 +1,13 @@
 use std::{fmt, ops};
 
 use BlockType::*;
+use indoc::indoc;
 use rand::Rng;
 use rand_distr::{Distribution, Uniform};
+use ratatui::{
+    style::Stylize,
+    text::{Line, Span, Text},
+};
 
 use crate::board::{BOARD_COLS, BUFFER_ZONE_ROWS};
 
@@ -37,6 +42,60 @@ impl BlockType {
             Z => Z_ROTATIONS,
         }
     }
+
+    pub fn colorizer(&self) -> fn(&'static str) -> Span<'static> {
+        match self {
+            I => Stylize::cyan,
+            J => Stylize::blue,
+            L => Stylize::light_red,
+            O => Stylize::yellow,
+            S => Stylize::green,
+            T => Stylize::magenta,
+            Z => Stylize::red,
+        }
+    }
+
+    /// Returns a coloured grid cell for rendering.
+    pub fn grid_cell(&self) -> Span<'static> {
+        self.colorizer()("██")
+    }
+
+    pub fn schematic(&self) -> Text<'static> {
+        let colorizer = self.colorizer();
+        let raw: &'static str = match self {
+            I => indoc! {"
+                \n████████
+            "},
+            J => indoc! {"
+                ██
+                ██████
+            "},
+            L => indoc! {"
+                    ██
+                ██████
+            "},
+            O => indoc! {"
+                ████
+                ████    
+            "},
+            S => indoc! {"
+                  ████
+                ████
+            "},
+            T => indoc! {"
+                  ██
+                ██████
+            "},
+            Z => indoc! {"
+                ████
+                  ████
+            "},
+        };
+        raw.lines()
+            .map(|line| Line::from(colorizer(line)))
+            .collect::<Vec<_>>()
+            .into()
+    }
 }
 
 impl ops::Index<RotationIndex> for BlockType {
@@ -49,15 +108,7 @@ impl ops::Index<RotationIndex> for BlockType {
 
 impl fmt::Display for BlockType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            I => writeln!(f, "I"),
-            J => writeln!(f, "J"),
-            L => writeln!(f, "L"),
-            O => writeln!(f, "O"),
-            S => writeln!(f, "S"),
-            T => writeln!(f, "T"),
-            Z => writeln!(f, "Z"),
-        }
+        write!(f, "{}", self.schematic())
     }
 }
 
@@ -524,5 +575,15 @@ impl ActiveBlock {
 
     pub fn rotate_counter_clockwise(&mut self) {
         self.rotation_idx.dec();
+    }
+
+    /// Returns a grid cell coloured according to the [BlockType].
+    pub fn grid_cell(&self) -> Span<'static> {
+        self.block_type.grid_cell()
+    }
+
+    /// Returns the schematic representation of the block according to the [BlockType].
+    pub fn schematic(&self) -> Text<'static> {
+        self.block_type.schematic()
     }
 }
