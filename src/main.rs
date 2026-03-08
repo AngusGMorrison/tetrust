@@ -6,11 +6,13 @@ use std::{
 
 use crossterm::event::{self as termevent, KeyCode};
 use crossterm::event::{Event as TermEvent, KeyEventKind};
+use indoc::indoc;
 use rand::rngs::ThreadRng;
 use ratatui::{
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::Stylize,
     text::Text,
+    widgets::{Block, Borders, Paragraph},
 };
 use tetrust::{
     block::BlockGenerator,
@@ -58,11 +60,17 @@ fn main() -> io::Result<()> {
 
 const BORDER_THICKNESS: u16 = 1;
 
-const GAME_AREA_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
+const BOARD_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
 
 /// The number of rendered columns is double the columns of the board, since square cells are
 /// rendered using two █ characters: ██.
-const GAME_AREA_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+const BOARD_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+
+const SCORE_WIDGET_HEIGHT: u16 = 3;
+
+const SCORE_WIDGET_WIDTH: u16 = 8;
+
+const BOARD_SCORE_PADDING: u16 = 2;
 
 fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
     let header = Text::from_iter([
@@ -70,21 +78,61 @@ fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
         "<q> Quit | <←|→> Move block | <↓> Drop block | <z|x> Rotate block".into(),
     ]);
 
-    let layout = Layout::vertical([
+    let [text_area, _, game_area] = frame.area().layout(&Layout::vertical([
         Constraint::Length(header.height() as u16),
         Constraint::Length(1),
-        Constraint::Length(GAME_AREA_HEIGHT),
-    ]);
-    let [text_area, _, game_area] = frame.area().layout(&layout);
+        Constraint::Length(BOARD_HEIGHT),
+    ]));
     frame.render_widget(header.centered(), text_area);
 
-    let game_area_layout = Layout::horizontal([
+    if state.game_over() {
+        render_game_over(frame, game_area);
+    } else {
+        render_game(frame, game_area, state);
+    }
+}
+
+fn render_game(frame: &mut ratatui::Frame, game_area: Rect, state: &GameState<ThreadRng>) {
+    let [_, board, _, score_col, _] = game_area.layout::<5>(&Layout::horizontal([
         Constraint::Fill(1),
-        Constraint::Length(GAME_AREA_WIDTH),
+        Constraint::Length(BOARD_WIDTH),
+        Constraint::Length(BOARD_SCORE_PADDING),
+        Constraint::Length(SCORE_WIDGET_WIDTH),
         Constraint::Fill(1),
-    ]);
-    let [_, game_area, _] = game_area.layout::<3>(&game_area_layout);
-    frame.render_widget(state.canvas(), game_area)
+    ]));
+    frame.render_widget(state.canvas(), board);
+    render_score(frame, score_col, state)
+}
+
+fn render_score(frame: &mut ratatui::Frame, score_area: Rect, state: &GameState<ThreadRng>) {
+    let [score_widget, _] = score_area.layout(&Layout::vertical([
+        Constraint::Length(SCORE_WIDGET_HEIGHT),
+        Constraint::Fill(1),
+    ]));
+
+    let score = Paragraph::new(Text::from(state.score().to_string()).bold())
+        .right_aligned()
+        .block(Block::new().borders(Borders::ALL).title("Score"));
+    frame.render_widget(score, score_widget);
+}
+
+fn render_game_over(frame: &mut ratatui::Frame, game_area: Rect) {
+    const TOP_PADDING: u16 = 7;
+    const TEXT_HEIGHT: u16 = 2;
+    let [_, text_area, _] = game_area.layout(&Layout::vertical([
+        Constraint::Length(TOP_PADDING),
+        Constraint::Length(TEXT_HEIGHT),
+        Constraint::Fill(1),
+    ]));
+    let message = Paragraph::new(Text::from(game_over_text()).bold()).centered();
+    frame.render_widget(message, text_area)
+}
+
+const fn game_over_text() -> &'static str {
+    indoc! {"
+        ▄▀▀  ▄▀▀▄ █▄▄█ █▀▀   ▄▀▀▄ █  █ █▀▀ █▀▀▄
+        ▀▄▄▀ █▀▀█ █  █ ██▄   ▀▄▄▀ ▀▄▄▀ ██▄ █▀▀▄
+    "}
 }
 
 fn poll_input(poll_duration: Duration) -> io::Result<Option<Event>> {
