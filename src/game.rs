@@ -197,13 +197,13 @@ impl<R: Rng> GameState<R> {
                             Some((i_ab_row, i_ab_col))
                                 if *i_ab_row == i_row + BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
                             {
-                                ctx.print(x, y, self.active_block.to_span());
+                                ctx.print(x, y, self.active_block.grid_cell());
                                 active_block_positions.next();
                             }
                             // Otherwise, render the fixed cell from the board.
                             _ => {
                                 if let Some(block_type) = cell {
-                                    ctx.print(x, y, block_type.to_span());
+                                    ctx.print(x, y, block_type.grid_cell());
                                 }
                             }
                         }
@@ -222,25 +222,4 @@ fn to_terminal_coords((row, col): Position) -> (f64, f64) {
         // Rows are counted from the bottom of the area instead of the top.
         (PLAYABLE_ROWS - row - 1) as f64,
     )
-}
-
-impl BlockType {
-    fn to_span(self) -> Span<'static> {
-        use BlockType::*;
-        match self {
-            I => "██".cyan(),
-            J => "██".blue(),
-            L => "██".light_red(),
-            O => "██".yellow(),
-            S => "██".green(),
-            T => "██".magenta(),
-            Z => "██".red(),
-        }
-    }
-}
-
-impl ActiveBlock {
-    fn to_span(&self) -> Span<'static> {
-        self.block_type().to_span()
-    }
 }
