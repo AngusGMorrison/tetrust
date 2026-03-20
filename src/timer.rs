@@ -8,6 +8,12 @@ pub struct Tick {
     pub input: bool,
 }
 
+impl Tick {
+    pub fn any(&self) -> bool {
+        self.gravity || self.input
+    }
+}
+
 /// Ticks at a constant rate, returning the events that should be triggered on each tick. Must be
 /// manually updated in a loop in order to accumulate progress towards the next tick.
 #[derive(Debug, Clone)]
@@ -25,27 +31,31 @@ pub struct GameTimer {
 }
 
 impl GameTimer {
-    /// Instantiates a new [GameTimer] that ticks every `tick_interval` and applies gravity every
-    /// `gravity_ticks`.
+    /// Instantiates a new [GameTimer] that advances when polled, returning a [Tick]
+    /// each time a tick interval has elapsed since the last poll.
     pub fn new(tick_interval: Duration, gravity_ticks: u64, input_ticks: u64) -> Self {
         Self {
             interval_timer: IntervalTimer::new(tick_interval),
             tick_count: 0,
             gravity_ticks,
-            input_ticks
+            input_ticks,
         }
+    }
+
+    pub fn gravity_ticks(&self) -> u64 {
+        self.gravity_ticks
     }
 
     /// Sets the number of ticks required to trigger gravity events.
     pub fn set_gravity_ticks(&mut self, ticks: u64) {
-        self.gravity_ticks = ticks
+        self.gravity_ticks = ticks;
     }
 
     /// Update triggers the timer to evaluate how much progress has been made towards the next tick
     /// since the last.
-    /// 
+    ///
     /// Returns [None] if insufficient time has elapsed for the timer to tick.
-    /// 
+    ///
     /// Returns [Some(Tick)] if the timer has ticked, with the fields of [Tick] indicating which
     /// events are scheduled to occur on that tick.
     pub fn update(&mut self) -> Option<Tick> {
@@ -65,12 +75,19 @@ impl GameTimer {
             .saturating_duration_since(Instant::now())
     }
 
-    // Returns the most recent tick.
+    /// Returns the most recent tick.
     fn last_tick(&self) -> Tick {
         Tick {
             gravity: self.tick_count.is_multiple_of(self.gravity_ticks),
             input: self.tick_count.is_multiple_of(self.input_ticks),
         }
+    }
+
+    /// Resets the timer and its accumulated tick count. This does not affect the intervals
+    /// between gravity and input ticks.
+    pub fn reset(&mut self) {
+        self.interval_timer.reset();
+        self.tick_count = 0;
     }
 }
 
@@ -118,5 +135,12 @@ impl IntervalTimer {
         self.next_tick_at = now + self.tick_interval - self.time_since_last_tick;
 
         ticked
+    }
+
+    fn reset(&mut self) {
+        let now = Instant::now();
+        self.last_update = now;
+        self.time_since_last_tick = Duration::default();
+        self.next_tick_at = now + self.tick_interval;
     }
 }
