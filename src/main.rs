@@ -1,60 +1,60 @@
-use std::{
-    io::{self},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 
-use crossterm::event::{self as termevent, KeyCode};
-use crossterm::event::{Event as TermEvent, KeyEventKind};
 use indoc::indoc;
 use rand::rngs::ThreadRng;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::Stylize,
-    symbols::Marker,
     text::Text,
-    widgets::{Block, Borders, Paragraph, canvas::Canvas},
+    widgets::{Block, Borders, Paragraph},
 };
 use tetrust::{
     block::BlockGenerator,
     board::{BOARD_COLS, PLAYABLE_ROWS},
-    game::{Direction, Event, GameState},
-    timer::GameTimer,
+    game::{Config, Game, Gravity, UpdateOutcome},
+    input::Stdin,
 };
 
 /// The number of ticks that must elapse between applications of gravity.
 const INITIAL_GRAVITY_TICKS: u64 = 48;
 
+const MIN_GRAVITY_TICKS: u64 = 12;
+
+const ACCELERATION: u64 = 4;
+
+const ACCELERATE_EVERY_N_POINTS: u32 = 5;
+
 /// The number of ticks that must elapse between reads of user input.
 const INPUT_TICKS: u64 = 1;
 
-fn main() -> io::Result<()> {
-    ratatui::run(|terminal| -> io::Result<()> {
+fn main() -> Result<(), String> {
+    ratatui::run(|terminal| -> Result<(), String> {
         let block_generator = BlockGenerator::new(rand::rng());
-        let mut state = GameState::new(block_generator);
         let frame_interval = Duration::from_secs_f32(1.0 / 60.0);
-        let mut timer = GameTimer::new(frame_interval, INITIAL_GRAVITY_TICKS, INPUT_TICKS);
+        let config = Config {
+            gravity: Gravity::new(INITIAL_GRAVITY_TICKS, MIN_GRAVITY_TICKS, ACCELERATION)?,
+            frame_interval,
+            accelerate_every_n_points: ACCELERATE_EVERY_N_POINTS,
+            input_ticks: INPUT_TICKS,
+        };
+        let mut game = Game::new(
+            block_generator,
+            Stdin,
+            config,
+        );
 
         loop {
-            if let Some(tick) = timer.update() {
-                if tick.gravity {
-                    state.update(Event::Gravity);
+            match game.update().map_err(|e| e.to_string())? {
+                UpdateOutcome::Updated => {
+                    _ = terminal
+                        .draw(|frame| render(frame, &game))
+                        .map_err(|e| e.to_string())?
                 }
-
-                if tick.input
-                    && let Some(event) = poll_input(timer.time_until_next_tick())?
-                {
-                    if event == Event::Quit {
-                        return Ok(());
-                    } else {
-                        state.update(event)
-                    }
-                }
-
-                terminal.draw(|frame| render(frame, &state))?;
+                UpdateOutcome::Quit => return Ok(()),
+                _ => (),
             }
 
-            thread::sleep(timer.time_until_next_tick())
+            thread::sleep(game.time_until_next_tick())
         }
     })
 }
@@ -75,7 +75,7 @@ const SCORE_WIDGET_HEIGHT: u16 = 3;
 
 const NEXT_BLOCK_WIDGET_HEIGHT: u16 = 4;
 
-fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
+fn render(frame: &mut ratatui::Frame, state: &Game<ThreadRng, Stdin>) {
     let header = Text::from_iter([
         "TETRUST".bold(),
         "<q> Quit | <←|→> Move block | <↓> Drop block | <z|x> Rotate block".into(),
@@ -95,7 +95,7 @@ fn render(frame: &mut ratatui::Frame, state: &GameState<ThreadRng>) {
     }
 }
 
-fn render_game(frame: &mut ratatui::Frame, game_area: Rect, state: &GameState<ThreadRng>) {
+fn render_game(frame: &mut ratatui::Frame, game_area: Rect, state: &Game<ThreadRng, Stdin>) {
     let [_, board, _, score_col, _] = game_area.layout::<5>(&Layout::horizontal([
         Constraint::Fill(1),
         Constraint::Length(BOARD_WIDTH),
@@ -107,7 +107,7 @@ fn render_game(frame: &mut ratatui::Frame, game_area: Rect, state: &GameState<Th
     render_sidebar(frame, score_col, state)
 }
 
-fn render_sidebar(frame: &mut ratatui::Frame, sidebar: Rect, state: &GameState<ThreadRng>) {
+fn render_sidebar(frame: &mut ratatui::Frame, sidebar: Rect, state: &Game<ThreadRng, Stdin>) {
     let [score_rect, _, next_block_rect, _] = sidebar.layout(&Layout::vertical([
         Constraint::Length(SCORE_WIDGET_HEIGHT),
         Constraint::Length(1),
@@ -119,14 +119,14 @@ fn render_sidebar(frame: &mut ratatui::Frame, sidebar: Rect, state: &GameState<T
     render_next_block(frame, next_block_rect, state);
 }
 
-fn render_score(frame: &mut ratatui::Frame, rect: Rect, state: &GameState<ThreadRng>) {
+fn render_score(frame: &mut ratatui::Frame, rect: Rect, state: &Game<ThreadRng, Stdin>) {
     let score_text = Paragraph::new(Text::from(state.score().to_string()).bold())
         .right_aligned()
         .block(Block::new().borders(Borders::ALL).title("Score"));
     frame.render_widget(score_text, rect);
 }
 
-fn render_next_block(frame: &mut ratatui::Frame, rect: Rect, state: &GameState<ThreadRng>) {
+fn render_next_block(frame: &mut ratatui::Frame, rect: Rect, state: &Game<ThreadRng, Stdin>) {
     let next_block = Paragraph::new(state.queue()[0].schematic())
         .left_aligned()
         .block(Block::new().borders(Borders::ALL).title("Next"));
@@ -150,25 +150,4 @@ const fn game_over_text() -> &'static str {
         ▄▀▀  ▄▀▀▄ █▄▄█ █▀▀   ▄▀▀▄ █  █ █▀▀ █▀▀▄
         ▀▄▄▀ █▀▀█ █  █ ██▄   ▀▄▄▀ ▀▄▄▀ ██▄ █▀▀▄
     "}
-}
-
-fn poll_input(poll_duration: Duration) -> io::Result<Option<Event>> {
-    if termevent::poll(poll_duration)? {
-        match termevent::read()? {
-            TermEvent::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                match key_event.code {
-                    KeyCode::Left => Ok(Some(Event::Move(Direction::Left))),
-                    KeyCode::Right => Ok(Some(Event::Move(Direction::Right))),
-                    KeyCode::Down => Ok(Some(Event::Gravity)),
-                    KeyCode::Char('q') => Ok(Some(Event::Quit)),
-                    KeyCode::Char('z') => Ok(Some(Event::Rotate(Direction::Left))),
-                    KeyCode::Char('x') => Ok(Some(Event::Rotate(Direction::Right))),
-                    _ => Ok(None),
-                }
-            }
-            _ => Ok(None),
-        }
-    } else {
-        Ok(None)
-    }
 }
