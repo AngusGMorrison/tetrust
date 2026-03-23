@@ -1,6 +1,7 @@
 use crossterm::event::{self as termevent, Event as TermEvent, KeyCode, KeyEventKind};
 use std::{io, time::Duration};
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Input {
     None,
     Down,
@@ -31,9 +32,10 @@ impl PollInput for Stdin {
                         KeyCode::Left => Left,
                         KeyCode::Right => Right,
                         KeyCode::Down => Down,
-                        KeyCode::Char('q') => Quit,
-                        KeyCode::Char('z') => RotateLeft,
-                        KeyCode::Char('x') => RotateRight,
+                        KeyCode::Char('q') | KeyCode::Char('Q') => Quit,
+                        KeyCode::Char('z') | KeyCode::Char('Z') => RotateLeft,
+                        KeyCode::Char('x') | KeyCode::Char('X') => RotateRight,
+                        KeyCode::Char('r') | KeyCode::Char('R') => Restart,
                         _ => None,
                     };
                     Ok(input)

@@ -9,8 +9,8 @@ use ratatui::widgets::{Block, Widget};
 
 use crate::block::Position;
 use crate::board::{BOARD_ROWS, BUFFER_ZONE_ROWS, PLAYABLE_ROWS};
-use crate::input::PollInput;
-use crate::timer::GameTimer;
+use crate::input::{Input, PollInput};
+use crate::timer::{GameTimer, Tick};
 use crate::{
     block::{ActiveBlock, BlockGenerator, BlockType},
     board::{BOARD_COLS, Board},
@@ -87,7 +87,7 @@ pub struct Config {
 
 /// A game of Tetrust.
 #[derive(Debug)]
-pub struct Game<R: Rng, I: PollInput> {
+pub struct Game<R: Rng + Clone, I: PollInput> {
     config: Config,
     score: u32,
     board: Board,
@@ -105,7 +105,7 @@ pub enum UpdateOutcome {
     Quit,
 }
 
-impl<R: Rng, I: PollInput> Game<R, I> {
+impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
     /// Instantiate a new game using the given [BlockGenerator] as its source of [Block]s.
     pub fn new(mut block_generator: BlockGenerator<R>, input: I, config: Config) -> Self {
         let first_block = block_generator.block();
@@ -134,9 +134,27 @@ impl<R: Rng, I: PollInput> Game<R, I> {
             input,
         }
     }
-}
 
-impl<R: Rng, I: PollInput> Game<R, I> {
+    /// Begins a new game.
+    fn restart(&mut self) {
+        self.timer = GameTimer::new(
+            self.config.frame_interval,
+            self.config.gravity.initial_ticks,
+            self.config.input_ticks,
+        );
+        self.score = 0;
+        self.board = Board::new();
+
+        let first_block = self.block_generator.block();
+        self.active_block = ActiveBlock::new(first_block);
+
+        self.queue.clear();
+        (0..QUEUE_LEN).for_each(|_| self.queue.push_back(self.block_generator.block()));
+        self.queue.make_contiguous();
+
+        self.game_over = false
+    }
+
     /// Returns the current score.
     pub fn score(&self) -> u32 {
         self.score
@@ -158,37 +176,62 @@ impl<R: Rng, I: PollInput> Game<R, I> {
         front
     }
 
-    /// Update the [GameState] in response to an [Event]. Does nothing if called when the game is
-    /// over.
+    /// Drives the game loop at a maxmimum rate determined by the [GameTimer]'s tick interval.
     pub fn update(&mut self) -> io::Result<UpdateOutcome> {
-        if self.game_over {
-            return Ok(UpdateOutcome::Unchanged);
-        }
-
         if let Some(tick) = self.timer.update() {
-            if tick.gravity {
-                self.handle_gravity();
-            }
-
-            if tick.input {
-                use crate::input::Input::*;
-                match self.input.poll_input(self.timer.time_until_next_tick())? {
-                    Down => self.handle_gravity(),
-                    Left => self.handle_move(Direction::Left),
-                    Right => self.handle_move(Direction::Right),
-                    RotateLeft => self.handle_rotate(Direction::Left),
-                    RotateRight => self.handle_rotate(Direction::Right),
-                    Quit => return Ok(UpdateOutcome::Quit),
-                    _ => (),
-                }
-            }
-
-            if tick.any() {
-                return Ok(UpdateOutcome::Updated);
+            if self.game_over() {
+                return self.update_game_over(&tick);
+            } else {
+                return self.update_game_in_progress(&tick);
             }
         }
 
         Ok(UpdateOutcome::Unchanged)
+    }
+
+    /// Manages updates that are valid in the game over state.
+    fn update_game_over(&mut self, tick: &Tick) -> io::Result<UpdateOutcome> {
+        if tick.input {
+            match self.input.poll_input(self.timer.time_until_next_tick())? {
+                Input::Quit => return Ok(UpdateOutcome::Quit),
+                Input::Restart => {
+                    self.restart();
+                    return Ok(UpdateOutcome::Updated);
+                },
+                _ => (),
+            }
+        }
+        Ok(UpdateOutcome::Unchanged)
+    }
+
+    /// Manages updates that are valid while the game is in progress.
+    fn update_game_in_progress(&mut self, tick: &Tick) -> io::Result<UpdateOutcome> {
+        if tick.gravity {
+            self.handle_gravity();
+        }
+
+        if tick.input {
+            use crate::input::Input::*;
+            match self.input.poll_input(self.timer.time_until_next_tick())? {
+                Down => self.handle_gravity(),
+                Left => self.handle_move(Direction::Left),
+                Right => self.handle_move(Direction::Right),
+                RotateLeft => self.handle_rotate(Direction::Left),
+                RotateRight => self.handle_rotate(Direction::Right),
+                Restart => {
+                    self.restart();
+                    return Ok(UpdateOutcome::Updated)
+                },
+                Quit => return Ok(UpdateOutcome::Quit),
+                _ => (),
+            }
+        }
+
+        if tick.any() {
+            Ok(UpdateOutcome::Updated)
+        } else {
+            Ok(UpdateOutcome::Unchanged)
+        }
     }
 
     pub fn time_until_next_tick(&self) -> Duration {
@@ -326,6 +369,7 @@ impl<R: Rng, I: PollInput> Game<R, I> {
                     }
                 }
             })
+
     }
 }
 
