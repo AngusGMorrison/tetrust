@@ -78,7 +78,7 @@ const NEXT_BLOCK_WIDGET_HEIGHT: u16 = 4;
 fn render(frame: &mut ratatui::Frame, state: &Game<ThreadRng, Stdin>) {
     let header = Text::from_iter([
         "TETRUST".bold(),
-        "<q> Quit | <←|→> Move block | <↓> Drop block | <z|x> Rotate block".into(),
+        "<←|↓|→> Move | <z|x> Rotate | <r> Restart | <q> Quit".into(),
     ]);
 
     let [text_area, _, game_area] = frame.area().layout(&Layout::vertical([

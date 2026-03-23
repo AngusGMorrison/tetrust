@@ -82,13 +82,6 @@ impl GameTimer {
             input: self.tick_count.is_multiple_of(self.input_ticks),
         }
     }
-
-    /// Resets the timer and its accumulated tick count. This does not affect the intervals
-    /// between gravity and input ticks.
-    pub fn reset(&mut self) {
-        self.interval_timer.reset();
-        self.tick_count = 0;
-    }
 }
 
 /// Ticks at a constant rate specified at instantiation. The timer must be manually updated in a
@@ -135,12 +128,5 @@ impl IntervalTimer {
         self.next_tick_at = now + self.tick_interval - self.time_since_last_tick;
 
         ticked
-    }
-
-    fn reset(&mut self) {
-        let now = Instant::now();
-        self.last_update = now;
-        self.time_since_last_tick = Duration::default();
-        self.next_tick_at = now + self.tick_interval;
     }
 }
