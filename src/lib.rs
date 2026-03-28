@@ -3,3 +3,4 @@ pub mod board;
 pub mod game;
 pub mod input;
 pub(crate) mod timer;
+pub mod render;
