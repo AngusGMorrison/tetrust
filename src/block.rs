@@ -113,19 +113,21 @@ impl fmt::Display for BlockType {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockGenerator<R: Rng> {
+pub struct BlockGenerator<R> {
     rng: R,
     sampler: Uniform<u8>,
 }
 
-impl<R: Rng> BlockGenerator<R> {
+impl<R> BlockGenerator<R> {
     pub fn new(rng: R) -> Self {
         let sampler = Uniform::new_inclusive(1, N_BLOCK_TYPES).unwrap_or_else(|_| {
             panic!("uniform sampler is always valid for 1..={}", N_BLOCK_TYPES)
         });
         Self { rng, sampler }
     }
+}
 
+impl<R: Rng> BlockGenerator<R> {
     pub fn block(&mut self) -> BlockType {
         match self.sampler.sample(&mut self.rng) {
             1 => I,

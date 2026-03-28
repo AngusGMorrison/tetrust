@@ -3,17 +3,12 @@ use std::io;
 use std::time::Duration;
 
 use rand::Rng;
-use ratatui::symbols::Marker;
-use ratatui::widgets::canvas::Canvas;
-use ratatui::widgets::{Block, Widget};
 
-use crate::block::Position;
-use crate::board::{BOARD_ROWS, BUFFER_ZONE_ROWS, PLAYABLE_ROWS};
 use crate::input::{Input, PollInput};
 use crate::timer::{GameTimer, Tick};
 use crate::{
     block::{ActiveBlock, BlockGenerator, BlockType},
-    board::{BOARD_COLS, Board},
+    board::Board,
 };
 
 /// The maxiumum number of blocks that may be queued.
@@ -87,7 +82,7 @@ pub struct Config {
 
 /// A game of Tetrust.
 #[derive(Debug)]
-pub struct Game<R: Rng + Clone, I: PollInput> {
+pub struct Game<R, I> {
     config: Config,
     score: u32,
     board: Board,
@@ -105,7 +100,42 @@ pub enum UpdateOutcome {
     Quit,
 }
 
-impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
+impl<R, I> Game<R, I> {
+    /// Returns the current score.
+    pub fn score(&self) -> u32 {
+        self.score
+    }
+
+    /// Returns true is the game is over, at which point no further events will be handled.
+    pub fn game_over(&self) -> bool {
+        self.game_over
+    }
+
+    /// Returns the current block queue as a contiguous slice.
+    pub fn queue(&self) -> &[BlockType] {
+        let (front, back) = self.queue.as_slices();
+        debug_assert_eq!(
+            back.len(),
+            0,
+            "Back slice of block queue was non-empty. This indicates that the queue wasn't made contiguous after inserting a new block.",
+        );
+        front
+    }
+
+    pub fn time_until_next_tick(&self) -> Duration {
+        self.timer.time_until_next_tick()
+    }
+
+    pub(crate) fn active_block(&self) -> &ActiveBlock {
+        &self.active_block
+    }
+
+    pub(crate) fn board(&self) -> &Board {
+        &self.board
+    }
+}
+
+impl<R: Rng, I: PollInput> Game<R, I> {
     /// Instantiate a new game using the given [BlockGenerator] as its source of [Block]s.
     pub fn new(mut block_generator: BlockGenerator<R>, input: I, config: Config) -> Self {
         let first_block = block_generator.block();
@@ -155,27 +185,6 @@ impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
         self.game_over = false
     }
 
-    /// Returns the current score.
-    pub fn score(&self) -> u32 {
-        self.score
-    }
-
-    /// Returns true is the game is over, at which point no further events will be handled.
-    pub fn game_over(&self) -> bool {
-        self.game_over
-    }
-
-    /// Returns the current block queue as a contiguous slice.
-    pub fn queue(&self) -> &[BlockType] {
-        let (front, back) = self.queue.as_slices();
-        debug_assert_eq!(
-            back.len(),
-            0,
-            "Back slice of block queue was non-empty. This indicates that the queue wasn't made contiguous after inserting a new block.",
-        );
-        front
-    }
-
     /// Drives the game loop at a maxmimum rate determined by the [GameTimer]'s tick interval.
     pub fn update(&mut self) -> io::Result<UpdateOutcome> {
         if let Some(tick) = self.timer.update() {
@@ -197,7 +206,7 @@ impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
                 Input::Restart => {
                     self.restart();
                     return Ok(UpdateOutcome::Updated);
-                },
+                }
                 _ => (),
             }
         }
@@ -220,8 +229,8 @@ impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
                 RotateRight => self.handle_rotate(Direction::Right),
                 Restart => {
                     self.restart();
-                    return Ok(UpdateOutcome::Updated)
-                },
+                    return Ok(UpdateOutcome::Updated);
+                }
                 Quit => return Ok(UpdateOutcome::Quit),
                 _ => (),
             }
@@ -232,10 +241,6 @@ impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
         } else {
             Ok(UpdateOutcome::Unchanged)
         }
-    }
-
-    pub fn time_until_next_tick(&self) -> Duration {
-        self.timer.time_until_next_tick()
     }
 
     /// Attempts to move the current [ActiveBlock] one row downwards, and handles the resulting
@@ -322,64 +327,4 @@ impl<R: Rng + Clone, I: PollInput + Clone> Game<R, I> {
             undo(&mut self.active_block)
         }
     }
-
-    pub fn canvas(&self) -> impl Widget {
-        Canvas::default()
-            // Bordering the canvas adds 2 to its vertical and horizontal dimensions. The layout
-            // it's rendered to must provide exactly enough room for the board and its borders to
-            // avoid artifacts from the resolution mismatch.
-            .block(Block::bordered())
-            // x_bounds and y_bounds define the canvas' viewport - inside its borders.
-            //
-            // Due to ratatui's internal rendering logic, stepping by two columns on each loop
-            // iteration to render double-width blocks (██), requires a negative x-offset to avoid
-            // blocks slipping behind the left border of the canvas.
-            .x_bounds([-1.0, (BOARD_COLS * 2) as f64 - 1.0])
-            // The y-bounds don't require an offset, since we're stepping by one row each time.
-            .y_bounds([0.0, (BOARD_ROWS - BUFFER_ZONE_ROWS - 1) as f64])
-            .marker(Marker::HalfBlock)
-            .paint(|ctx| {
-                // Iterate over all cells of the board and active block.
-                let mut active_block_positions = self.active_block.board_positions().peekable();
-                for (i_row, row) in self.board.iter().skip(BUFFER_ZONE_ROWS).enumerate() {
-                    for (i_col, cell) in row.iter().enumerate() {
-                        let (x, y) = to_terminal_coords((i_row, i_col));
-                        match active_block_positions.peek() {
-                            // If the current position is an active block position inside the
-                            // buffer zone, skip the cell.
-                            Some((i_ab_row, _)) if *i_ab_row < BUFFER_ZONE_ROWS => {
-                                active_block_positions.next();
-                            }
-                            // If the current position is an active block position which is on the
-                            // visible board, render the current active block cell and advance the
-                            // iterator to the next.
-                            Some((i_ab_row, i_ab_col))
-                                if *i_ab_row == i_row + BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
-                            {
-                                ctx.print(x, y, self.active_block.grid_cell());
-                                active_block_positions.next();
-                            }
-                            // Otherwise, render the fixed cell from the board.
-                            _ => {
-                                if let Some(block_type) = cell {
-                                    ctx.print(x, y, block_type.grid_cell());
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-
-    }
-}
-
-/// Converts a (row, col) board position to (x, y) terminal coordinates, where y = 0 at the bottom
-/// of the terminal area.
-fn to_terminal_coords((row, col): Position) -> (f64, f64) {
-    (
-        // Widths are doubled, since square tiles are achieved using two █ characters: ██.
-        (col * 2) as f64,
-        // Rows are counted from the bottom of the area instead of the top.
-        (PLAYABLE_ROWS - row - 1) as f64,
-    )
 }
