@@ -1,5 +1,4 @@
 use indoc::indoc;
-use rand::Rng;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -13,7 +12,6 @@ use crate::{
     block::Position,
     board::{BOARD_COLS, BOARD_ROWS, BUFFER_ZONE_ROWS, PLAYABLE_ROWS},
     game::Game,
-    input::PollInput,
 };
 
 const BORDER_THICKNESS: u16 = 1;
@@ -32,7 +30,7 @@ const SCORE_WIDGET_HEIGHT: u16 = 3;
 
 const NEXT_BLOCK_WIDGET_HEIGHT: u16 = 4;
 
-impl<R: Rng, I: PollInput> Widget for &Game<R, I> {
+impl<R, I> Widget for &Game<R, I> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
