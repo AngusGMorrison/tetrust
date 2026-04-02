@@ -1,9 +1,7 @@
 use std::{thread, time::Duration};
 
 use tetrust::{
-    block::BlockGenerator,
-    game::{Config, Game, Gravity, UpdateOutcome},
-    input::Stdin,
+    block_generator::BlockGenerator, config::{Config, Gravity}, game::{Game, UpdateOutcome}, input::Stdin
 };
 
 /// The number of ticks that must elapse between applications of gravity.
@@ -27,11 +25,7 @@ fn main() -> Result<(), String> {
         accelerate_every_n_points: ACCELERATE_EVERY_N_POINTS,
         input_ticks: INPUT_TICKS,
     };
-    let mut game = Game::new(
-        block_generator,
-        Stdin,
-        config,
-    );
+    let mut game = Game::new(block_generator, Stdin, config);
 
     ratatui::run(|terminal| -> Result<(), String> {
         loop {

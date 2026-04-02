@@ -4,10 +4,12 @@ use std::time::Duration;
 
 use rand::Rng;
 
+use crate::block_generator::BlockGenerator;
+use crate::config::Config;
 use crate::input::{Input, PollInput};
 use crate::timer::{GameTimer, Tick};
 use crate::{
-    block::{ActiveBlock, BlockGenerator, BlockType},
+    block::{ActiveBlock, BlockType},
     board::Board,
 };
 
@@ -16,68 +18,9 @@ const QUEUE_LEN: usize = 3;
 
 /// A direction of movement or rotation.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Direction {
+enum Direction {
     Left,
     Right,
-}
-
-// The [GameState] is updated in response to events passed to [GameState::update]. This decouples
-// the representation of the game's state from concepts such as the game loop.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Event {
-    Quit,
-    Move(Direction),
-    Rotate(Direction),
-    Gravity,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Gravity configuration.
-pub struct Gravity {
-    /// Initial ticks between applications of gravity.
-    initial_ticks: u64,
-    /// The minimum allowable ticks between applications of gravity.
-    min_ticks: u64,
-    /// The amount by which gravity is reduced when the associated score threshold is passed.
-    acceleration: u64,
-}
-
-impl Gravity {
-    pub fn new(initial_ticks: u64, min_ticks: u64, acceleration: u64) -> Result<Self, String> {
-        if initial_ticks < min_ticks {
-            return Err(format!(
-                "initial_ticks cannot be less than min_ticks: initial_ticks={initial_ticks}, min_ticks={min_ticks}"
-            ));
-        }
-
-        if acceleration > initial_ticks {
-            return Err(format!(
-                "acceleration cannot be greater than initial_ticks: acceleration={acceleration}, initial_ticks={initial_ticks}"
-            ));
-        }
-
-        Ok(Self {
-            initial_ticks,
-            min_ticks,
-            acceleration,
-        })
-    }
-}
-
-/// Game configuration.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Config {
-    /// The interval between game updates.
-    pub frame_interval: Duration,
-
-    /// Gravity config.
-    pub gravity: Gravity,
-
-    /// The number of points that must accumulate before gravity is increased.
-    pub accelerate_every_n_points: u32,
-
-    /// The number of game ticks that must elapse between input reads.
-    pub input_ticks: u64,
 }
 
 /// A game of Tetrust.
@@ -148,7 +91,7 @@ impl<R: Rng, I: PollInput> Game<R, I> {
 
         let timer = GameTimer::new(
             config.frame_interval,
-            config.gravity.initial_ticks,
+            config.gravity.initial_ticks(),
             config.input_ticks,
         );
 
@@ -169,7 +112,7 @@ impl<R: Rng, I: PollInput> Game<R, I> {
     fn restart(&mut self) {
         self.timer = GameTimer::new(
             self.config.frame_interval,
-            self.config.gravity.initial_ticks,
+            self.config.gravity.initial_ticks(),
             self.config.input_ticks,
         );
         self.score = 0;
@@ -284,8 +227,8 @@ impl<R: Rng, I: PollInput> Game<R, I> {
         // Gravity ticks cannot be decreased below the minimum ticks specified at the start of
         // the game.
         let next_gravity_ticks = current_gravity_ticks
-            .saturating_sub(self.config.gravity.acceleration)
-            .max(self.config.gravity.min_ticks);
+            .saturating_sub(self.config.gravity.acceleration())
+            .max(self.config.gravity.min_ticks());
         self.timer.set_gravity_ticks(next_gravity_ticks);
     }
 

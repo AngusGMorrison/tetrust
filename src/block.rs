@@ -2,8 +2,6 @@ use std::{fmt, ops};
 
 use BlockType::*;
 use indoc::indoc;
-use rand::Rng;
-use rand_distr::{Distribution, Uniform};
 use ratatui::{
     style::Stylize,
     text::{Line, Span, Text},
@@ -13,9 +11,6 @@ use crate::board::{BOARD_COLS, BUFFER_ZONE_ROWS};
 
 /// Row-column coordinates for matrix access.
 pub type Position = (usize, usize);
-
-// TODO: Update this as new block types are added.
-const N_BLOCK_TYPES: u8 = 7;
 
 /// The varieties of block that may be seen in a game.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -30,6 +25,9 @@ pub enum BlockType {
 }
 
 impl BlockType {
+    /// The number of block types in the game.
+    pub const COUNT: u8 = 7;
+
     /// Returns all possible rotations of the block type.
     fn rotations(&self) -> &'static Rotations {
         match self {
@@ -43,25 +41,25 @@ impl BlockType {
         }
     }
 
-    pub fn colorizer(&self) -> fn(&'static str) -> Span<'static> {
+    fn colorize(&self, s: &'static str) -> Span<'static> {
         match self {
-            I => Stylize::cyan,
-            J => Stylize::blue,
-            L => Stylize::light_red,
-            O => Stylize::yellow,
-            S => Stylize::green,
-            T => Stylize::magenta,
-            Z => Stylize::red,
+            I => s.cyan(),
+            J => s.blue(),
+            L => s.light_red(),
+            O => s.yellow(),
+            S => s.green(),
+            T => s.magenta(),
+            Z => s.red(),
         }
     }
 
     /// Returns a coloured grid cell for rendering.
     pub fn grid_cell(&self) -> Span<'static> {
-        self.colorizer()("██")
+        self.colorize("██")
     }
 
+    /// Returns the schematic representation of the block type for rendering.
     pub fn schematic(&self) -> Text<'static> {
-        let colorizer = self.colorizer();
         let raw: &'static str = match self {
             I => indoc! {"
                 \n████████
@@ -76,7 +74,7 @@ impl BlockType {
             "},
             O => indoc! {"
                 ████
-                ████    
+                ████
             "},
             S => indoc! {"
                   ████
@@ -92,7 +90,7 @@ impl BlockType {
             "},
         };
         raw.lines()
-            .map(|line| Line::from(colorizer(line)))
+            .map(|line| Line::from(self.colorize(line)))
             .collect::<Vec<_>>()
             .into()
     }
@@ -112,41 +110,9 @@ impl fmt::Display for BlockType {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct BlockGenerator<R> {
-    rng: R,
-    sampler: Uniform<u8>,
-}
-
-impl<R> BlockGenerator<R> {
-    pub fn new(rng: R) -> Self {
-        let sampler = Uniform::new_inclusive(1, N_BLOCK_TYPES).unwrap_or_else(|_| {
-            panic!("uniform sampler is always valid for 1..={}", N_BLOCK_TYPES)
-        });
-        Self { rng, sampler }
-    }
-}
-
-impl<R: Rng> BlockGenerator<R> {
-    pub fn block(&mut self) -> BlockType {
-        match self.sampler.sample(&mut self.rng) {
-            1 => I,
-            2 => J,
-            3 => L,
-            4 => O,
-            5 => S,
-            6 => T,
-            7 => Z,
-            i => unreachable!(
-                "Only {N_BLOCK_TYPES} block types are implemented, but sampler returned {i}",
-            ),
-        }
-    }
-}
-
 /// A single rotation of a block situated in a local coordinate space. Conceptually, this is a 2D
-/// matrix, but the matrix itself isn't required to implement the game.
-#[derive(Debug, Clone)]
+/// matrix, but the matrix itself isn't necessary to implement the game.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Rotation {
     /// The positive vertical offset of the top of the block from the local coordinate space's
     /// origin.
@@ -190,7 +156,7 @@ impl Rotation {
 }
 
 /// A complete set of four rotations for a [BlockType].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Rotations([Rotation; 4]);
 
 /// Type-safe wrapping type for indexing [Rotations], constrained to the range 0..4.
@@ -478,6 +444,7 @@ const Z_ROTATIONS: &Rotations = &Rotations([
     },
 ]);
 
+/// The block currently under the player's control.
 #[derive(Debug, Clone)]
 pub struct ActiveBlock {
     // The row-column coordinates of the top-left corner of the block's virtual bounding box on the
@@ -583,9 +550,123 @@ impl ActiveBlock {
     pub fn grid_cell(&self) -> Span<'static> {
         self.block_type.grid_cell()
     }
+}
 
-    /// Returns the schematic representation of the block according to the [BlockType].
-    pub fn schematic(&self) -> Text<'static> {
-        self.block_type.schematic()
+#[cfg(test)]
+mod block_type_tests {
+    use super::*;
+
+    mod index_tests {
+        use super::*;
+
+        #[test]
+        fn when_rotation_index_is_0_returns_rotation_0() {
+            let idx = RotationIndex::new();
+            assert_eq!(I[idx], I_ROTATIONS.0[0]);
+        }
+
+        #[test]
+        fn when_rotation_index_is_1_returns_rotation_1() {
+            let mut idx = RotationIndex::new();
+            idx.inc();
+            assert_eq!(I[idx], I_ROTATIONS.0[1]);
+        }
+
+        #[test]
+        fn when_rotation_index_is_2_returns_rotation_2() {
+            let mut idx = RotationIndex::new();
+            idx.inc();
+            idx.inc();
+            assert_eq!(I[idx], I_ROTATIONS.0[2]);
+        }
+
+        #[test]
+        fn when_rotation_index_is_3_returns_rotation_3() {
+            let mut idx = RotationIndex::new();
+            idx.inc();
+            idx.inc();
+            idx.inc();
+            assert_eq!(I[idx], I_ROTATIONS.0[3]);
+        }
+    }
+
+    mod rotations_tests {
+        use super::*;
+
+        #[test]
+        fn i_returns_i_rotations() {
+            assert_eq!(I.rotations(), I_ROTATIONS);
+        }
+
+        #[test]
+        fn j_returns_j_rotations() {
+            assert_eq!(J.rotations(), J_ROTATIONS);
+        }
+
+        #[test]
+        fn l_returns_l_rotations() {
+            assert_eq!(L.rotations(), L_ROTATIONS);
+        }
+
+        #[test]
+        fn o_returns_o_rotations() {
+            assert_eq!(O.rotations(), O_ROTATIONS);
+        }
+
+        #[test]
+        fn s_returns_s_rotations() {
+            assert_eq!(S.rotations(), S_ROTATIONS);
+        }
+
+        #[test]
+        fn t_returns_t_rotations() {
+            assert_eq!(T.rotations(), T_ROTATIONS);
+        }
+
+        #[test]
+        fn z_returns_z_rotations() {
+            assert_eq!(Z.rotations(), Z_ROTATIONS);
+        }
+    }
+}
+
+#[cfg(test)]
+mod rotation_index_tests {
+    use super::*;
+
+    mod inc_tests {
+        use super::*;
+
+        #[test]
+        fn when_index_is_less_than_3_increments() {
+            let mut idx = RotationIndex::new();
+            idx.inc();
+            assert_eq!(idx, RotationIndex(1));
+        }
+
+        #[test]
+        fn when_index_is_3_wraps_to_0() {
+            let mut idx = RotationIndex(3);
+            idx.inc();
+            assert_eq!(idx, RotationIndex(0));
+        }
+    }
+
+    mod dec_tests {
+        use super::*;
+
+        #[test]
+        fn when_index_is_greater_than_0_decrements() {
+            let mut idx = RotationIndex(3);
+            idx.dec();
+            assert_eq!(idx, RotationIndex(2));
+        }
+
+        #[test]
+        fn when_index_is_0_wraps_to_3() {
+            let mut idx = RotationIndex::new();
+            idx.dec();
+            assert_eq!(idx, RotationIndex(3));
+        }
     }
 }
