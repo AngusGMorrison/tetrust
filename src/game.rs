@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use rand::Rng;
 
+use rand_distr::Uniform;
+
 use crate::block_generator::BlockGenerator;
 use crate::config::Config;
 use crate::input::{Input, PollInput};
@@ -29,7 +31,7 @@ pub struct Game<R, I> {
     config: Config,
     score: u32,
     board: Board,
-    block_generator: BlockGenerator<R>,
+    block_generator: BlockGenerator<R, Uniform<u8>>,
     active_block: ActiveBlock,
     queue: VecDeque<BlockType>,
     game_over: bool,
@@ -80,7 +82,7 @@ impl<R, I> Game<R, I> {
 
 impl<R: Rng, I: PollInput> Game<R, I> {
     /// Instantiate a new game using the given [BlockGenerator] as its source of [Block]s.
-    pub fn new(mut block_generator: BlockGenerator<R>, input: I, config: Config) -> Self {
+    pub fn new(mut block_generator: BlockGenerator<R, Uniform<u8>>, input: I, config: Config) -> Self {
         let first_block = block_generator.block();
         let active_block = ActiveBlock::new(first_block);
 
