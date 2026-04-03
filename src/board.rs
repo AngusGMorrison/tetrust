@@ -2,23 +2,24 @@ use std::fmt;
 
 use crate::block::{ActiveBlock, BlockType};
 
-/// The height of the invisible buffer zone used for spawning blocks.
-pub const BUFFER_ZONE_ROWS: usize = 2;
-
-/// The number of rows rendered to the player.
-pub const PLAYABLE_ROWS: usize = 20;
-
-/// The total number of rows on the board.
-pub const BOARD_ROWS: usize = BUFFER_ZONE_ROWS + PLAYABLE_ROWS;
-
-/// The number of columns on the board.
-pub const BOARD_COLS: usize = 10;
-
-/// The play space. A 2D matrix where a square is one if occupied and zero otherwise.
+/// The play space. A 2D matrix where a square is Some with the occupying [BlockType] if occupied
+/// and None otherwise.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Board([[Option<BlockType>; BOARD_COLS]; BOARD_ROWS]);
+pub struct Board([[Option<BlockType>; Self::COLUMNS]; Self::ROWS]);
 
 impl Board {
+    /// The number of columns on the board.
+    pub const COLUMNS: usize = 10;
+
+    /// The height of the invisible buffer zone used for spawning blocks.
+    pub const BUFFER_ZONE_ROWS: usize = 2;
+
+    /// The number of rows rendered to the player.
+    pub const PLAYABLE_ROWS: usize = 20;
+
+    /// The total number of rows on the board.
+    pub const ROWS: usize = Self::BUFFER_ZONE_ROWS + Self::PLAYABLE_ROWS;
+
     /// Instantiates an empty board.
     pub fn new() -> Self {
         Self::default()
@@ -27,7 +28,7 @@ impl Board {
     /// Instatiates a full board.
     #[cfg(test)]
     fn new_filled() -> Self {
-        Self([[Some(BlockType::I); BOARD_COLS]; BOARD_ROWS])
+        Self([[Some(BlockType::I); Self::COLUMNS]; Self::ROWS])
     }
 
     /// Clear continguous rows of occupied squares and consolidate the board, returning the number
@@ -46,7 +47,7 @@ impl Board {
         }
 
         // Next, work up the board looking for completed rows.
-        let mut i = (BOARD_ROWS - 1) as isize; // isize avoids a wrapping sub when highest_occupied_row is 0
+        let mut i = (Self::ROWS - 1) as isize; // isize avoids a wrapping sub when highest_occupied_row is 0
         while i >= highest_occupied_row {
             // Skip incomplete rows.
             if self.0[i as usize].iter().any(|v| v.is_none()) {
@@ -74,7 +75,9 @@ impl Board {
         active_block
             .board_positions()
             // Collisions with the left boundary are detectable by underflow of `pos.1`.
-            .any(|pos| pos.0 >= BOARD_ROWS || pos.1 >= BOARD_COLS || self.0[pos.0][pos.1].is_some())
+            .any(|pos| {
+                pos.0 >= Self::ROWS || pos.1 >= Self::COLUMNS || self.0[pos.0][pos.1].is_some()
+            })
     }
 
     /// Fills the board cells corresponding to the final position of the active block, fixing the
@@ -102,21 +105,22 @@ impl Board {
     }
 
     /// Returns an iterator over the board's rows.
-    pub fn iter(&self) -> impl Iterator<Item = &[Option<BlockType>; BOARD_COLS]> {
+    pub fn iter(&self) -> impl Iterator<Item = &[Option<BlockType>; Self::COLUMNS]> {
         self.0.iter()
     }
 }
 
-impl From<[[Option<BlockType>; BOARD_COLS]; BOARD_ROWS]> for Board {
-    fn from(value: [[Option<BlockType>; BOARD_COLS]; BOARD_ROWS]) -> Self {
+impl From<[[Option<BlockType>; Board::COLUMNS]; Board::ROWS]> for Board {
+    fn from(value: [[Option<BlockType>; Board::COLUMNS]; Board::ROWS]) -> Self {
         Board(value)
     }
 }
 
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))?;
-        let row_printer = |f: &mut fmt::Formatter<'_>, row: &[Option<BlockType>; 10]| {
+        writeln!(f, "*{}*", "—".repeat(Board::COLUMNS))?;
+
+        let print_row = |f: &mut fmt::Formatter<'_>, row: &[Option<BlockType>; 10]| {
             let row = row.map(|o| o.map_or(" ".into(), |bt| bt.to_string()));
             writeln!(
                 f,
@@ -125,24 +129,28 @@ impl fmt::Display for Board {
             )
         };
 
-        let iter = self.0.iter();
-        iter.clone()
-            .take(2)
-            .try_for_each(|row| row_printer(f, row))?;
-        writeln!(f, "|{}|", "—".repeat(BOARD_COLS))?;
-        iter.skip(2).try_for_each(|row| row_printer(f, row))?;
-        writeln!(f, "*{}*", "—".repeat(BOARD_COLS))
+        self.0[..Board::BUFFER_ZONE_ROWS]
+            .iter()
+            .try_for_each(|row| print_row(f, row))?;
+
+        writeln!(f, "|{}|", "—".repeat(Board::COLUMNS))?;
+
+        self.0[Board::BUFFER_ZONE_ROWS..]
+            .iter()
+            .try_for_each(|row| print_row(f, row))?;
+
+        writeln!(f, "*{}*", "—".repeat(Board::COLUMNS))
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod board_tests {
     use super::*;
     mod clear_lines_tests {
         use super::*;
 
         #[test]
-        fn empty_board() {
+        fn when_board_is_empty_clears_no_lines() {
             let mut board = Board::new();
             let expected_lines_cleared = 0;
             let expected_board = Board::new();
@@ -163,9 +171,9 @@ mod tests {
         }
 
         #[test]
-        fn full_board() {
+        fn when_board_is_full_clears_all_lines() {
             let mut board = Board::new_filled();
-            let expected_lines_cleared = BOARD_ROWS as u8;
+            let expected_lines_cleared = Board::ROWS as u8;
             let expected_board = Board::new();
 
             let lines_cleared = board.clear_lines();
@@ -184,9 +192,9 @@ mod tests {
         }
 
         #[test]
-        fn single_line_no_consolidation() {
+        fn when_one_complete_line_clears_one_line() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
+            board.0[Board::ROWS - 1] = [Some(BlockType::I); Board::COLUMNS];
 
             let expected_lines_cleared = 1;
             let expected_board = Board::new();
@@ -207,10 +215,10 @@ mod tests {
         }
 
         #[test]
-        fn multiple_lines_no_consolidation() {
+        fn when_multiple_complete_lines_clears_all_complete_lines() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 2] = [Some(BlockType::I); BOARD_COLS];
-            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
+            board.0[Board::ROWS - 2] = [Some(BlockType::I); Board::COLUMNS];
+            board.0[Board::ROWS - 1] = [Some(BlockType::I); Board::COLUMNS];
 
             let expected_lines_cleared = 2;
             let expected_board = Board::new();
@@ -231,9 +239,9 @@ mod tests {
         }
 
         #[test]
-        fn single_line_with_consolidation() {
+        fn when_complete_line_has_rows_above_it_consolidates_board() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 3] = [
+            board.0[Board::ROWS - 3] = [
                 None,
                 Some(BlockType::I),
                 None,
@@ -245,7 +253,7 @@ mod tests {
                 None,
                 Some(BlockType::I),
             ];
-            board.0[BOARD_ROWS - 2] = [
+            board.0[Board::ROWS - 2] = [
                 Some(BlockType::I),
                 None,
                 Some(BlockType::I),
@@ -257,11 +265,11 @@ mod tests {
                 Some(BlockType::I),
                 None,
             ];
-            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
+            board.0[Board::ROWS - 1] = [Some(BlockType::I); Board::COLUMNS];
 
             let expected_lines_cleared = 1;
             let mut expected_board = Board::new();
-            expected_board.0[BOARD_ROWS - 2] = [
+            expected_board.0[Board::ROWS - 2] = [
                 None,
                 Some(BlockType::I),
                 None,
@@ -273,7 +281,7 @@ mod tests {
                 None,
                 Some(BlockType::I),
             ];
-            expected_board.0[BOARD_ROWS - 1] = [
+            expected_board.0[Board::ROWS - 1] = [
                 Some(BlockType::I),
                 None,
                 Some(BlockType::I),
@@ -302,9 +310,9 @@ mod tests {
         }
 
         #[test]
-        fn multiple_lines_with_consolidation() {
+        fn when_multiple_complete_lines_have_rows_above_them_consolidates_board() {
             let mut board = Board::new();
-            board.0[BOARD_ROWS - 4] = [
+            board.0[Board::ROWS - 4] = [
                 None,
                 Some(BlockType::I),
                 None,
@@ -316,8 +324,8 @@ mod tests {
                 None,
                 Some(BlockType::I),
             ];
-            board.0[BOARD_ROWS - 3] = [Some(BlockType::I); BOARD_COLS];
-            board.0[BOARD_ROWS - 2] = [
+            board.0[Board::ROWS - 3] = [Some(BlockType::I); Board::COLUMNS];
+            board.0[Board::ROWS - 2] = [
                 Some(BlockType::I),
                 None,
                 Some(BlockType::I),
@@ -329,11 +337,11 @@ mod tests {
                 Some(BlockType::I),
                 None,
             ];
-            board.0[BOARD_ROWS - 1] = [Some(BlockType::I); BOARD_COLS];
+            board.0[Board::ROWS - 1] = [Some(BlockType::I); Board::COLUMNS];
 
             let expected_lines_cleared = 2;
             let mut expected_board = Board::new();
-            expected_board.0[BOARD_ROWS - 2] = [
+            expected_board.0[Board::ROWS - 2] = [
                 None,
                 Some(BlockType::I),
                 None,
@@ -345,7 +353,7 @@ mod tests {
                 None,
                 Some(BlockType::I),
             ];
-            expected_board.0[BOARD_ROWS - 1] = [
+            expected_board.0[Board::ROWS - 1] = [
                 Some(BlockType::I),
                 None,
                 Some(BlockType::I),
@@ -371,6 +379,95 @@ mod tests {
                 "Cleared board did not match expected board:\nExpected:\n{}\nActual:\n{}",
                 expected_board, board
             )
+        }
+    }
+
+    mod collides_tests {
+        use super::*;
+
+        #[test]
+        fn when_block_is_within_bounds_and_board_is_empty_returns_false() {
+            let board = Board::new();
+            let block = ActiveBlock::new(BlockType::I);
+            assert!(!board.collides(&block));
+        }
+
+        #[test]
+        fn when_block_row_exceeds_board_rows_returns_true() {
+            let board = Board::new();
+            let mut block = ActiveBlock::new(BlockType::I);
+            for _ in 0..Board::ROWS - 1 {
+                block.move_down();
+            }
+            assert!(board.collides(&block));
+        }
+
+        #[test]
+        fn when_block_column_exceeds_board_columns_returns_true() {
+            let board = Board::new();
+            let mut block = ActiveBlock::new(BlockType::I);
+            // I starts at left=3; move right 5 times to left=8 so local col 2 maps to board col 10.
+            for _ in 0..5 {
+                block.move_right();
+            }
+            assert!(board.collides(&block));
+        }
+
+        #[test]
+        fn when_block_is_past_left_boundary_returns_true() {
+            let board = Board::new();
+            let mut block = ActiveBlock::new(BlockType::I);
+            // I starts at left=3; move left 4 times to left=-1 so local col 0 overflows to usize::MAX.
+            for _ in 0..4 {
+                block.move_left();
+            }
+            assert!(board.collides(&block));
+        }
+
+        #[test]
+        fn when_block_overlaps_occupied_cell_returns_true() {
+            let mut board = Board::new();
+            // I at its initial position occupies board cell (1, 3).
+            board.0[1][3] = Some(BlockType::I);
+            let block = ActiveBlock::new(BlockType::I);
+            assert!(board.collides(&block));
+        }
+    }
+
+    mod fix_active_block_tests {
+        use super::*;
+
+        #[test]
+        fn sets_block_positions_to_block_type() {
+            let mut board = Board::new();
+            let block = ActiveBlock::new(BlockType::I);
+
+            board.fix_active_block(&block);
+
+            // I at its initial position occupies (1, 3..=6).
+            let mut expected = Board::new();
+            expected.0[1][3] = Some(BlockType::I);
+            expected.0[1][4] = Some(BlockType::I);
+            expected.0[1][5] = Some(BlockType::I);
+            expected.0[1][6] = Some(BlockType::I);
+            assert_eq!(board, expected);
+        }
+    }
+
+    mod buffer_zone_occupied_tests {
+        use super::*;
+
+        #[test]
+        fn when_buffer_zone_row_1_is_occupied_returns_true() {
+            let mut board = Board::new();
+            board.0[1][0] = Some(BlockType::I);
+            assert!(board.buffer_zone_occupied());
+        }
+
+        #[test]
+        fn when_buffer_zone_is_empty_returns_false() {
+            let board = Board::new();
+            assert!(!board.buffer_zone_occupied());
         }
     }
 }

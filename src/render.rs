@@ -10,17 +10,17 @@ use ratatui::{
 
 use crate::{
     block::Position,
-    board::{BOARD_COLS, BOARD_ROWS, BUFFER_ZONE_ROWS, PLAYABLE_ROWS},
+    board::Board,
     game::Game,
 };
 
 const BORDER_THICKNESS: u16 = 1;
 
-const BOARD_HEIGHT: u16 = PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
+const BOARD_HEIGHT: u16 = Board::PLAYABLE_ROWS as u16 + BORDER_THICKNESS * 2;
 
 /// The number of rendered columns is double the columns of the board, since square cells are
 /// rendered using two █ characters: ██.
-const BOARD_WIDTH: u16 = BOARD_COLS as u16 * 2 + BORDER_THICKNESS * 2;
+const BOARD_WIDTH: u16 = Board::COLUMNS as u16 * 2 + BORDER_THICKNESS * 2;
 
 const BOARD_SIDEBAR_PADDING: u16 = 2;
 
@@ -80,27 +80,27 @@ impl<R, I> Game<R, I> {
             // Due to ratatui's internal rendering logic, stepping by two columns on each loop
             // iteration to render double-width blocks (██), requires a negative x-offset to avoid
             // blocks slipping behind the left border of the canvas.
-            .x_bounds([-1.0, (BOARD_COLS * 2) as f64 - 1.0])
+            .x_bounds([-1.0, (Board::COLUMNS * 2) as f64 - 1.0])
             // The y-bounds don't require an offset, since we're stepping by one row each time.
-            .y_bounds([0.0, (BOARD_ROWS - BUFFER_ZONE_ROWS - 1) as f64])
+            .y_bounds([0.0, (Board::ROWS - Board::BUFFER_ZONE_ROWS - 1) as f64])
             .marker(Marker::HalfBlock)
             .paint(|ctx| {
                 // Iterate over all cells of the board and active block.
                 let mut active_block_positions = self.active_block().board_positions().peekable();
-                for (i_row, row) in self.board().iter().skip(BUFFER_ZONE_ROWS).enumerate() {
+                for (i_row, row) in self.board().iter().skip(Board::BUFFER_ZONE_ROWS).enumerate() {
                     for (i_col, cell) in row.iter().enumerate() {
                         let (x, y) = to_terminal_coords((i_row, i_col));
                         match active_block_positions.peek() {
                             // If the current position is an active block position inside the
                             // buffer zone, skip the cell.
-                            Some((i_ab_row, _)) if *i_ab_row < BUFFER_ZONE_ROWS => {
+                            Some((i_ab_row, _)) if *i_ab_row < Board::BUFFER_ZONE_ROWS => {
                                 active_block_positions.next();
                             }
                             // If the current position is an active block position which is on the
                             // visible board, render the current active block cell and advance the
                             // iterator to the next.
                             Some((i_ab_row, i_ab_col))
-                                if *i_ab_row == i_row + BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
+                                if *i_ab_row == i_row + Board::BUFFER_ZONE_ROWS && *i_ab_col == i_col =>
                             {
                                 ctx.print(x, y, self.active_block().grid_cell());
                                 active_block_positions.next();
@@ -171,6 +171,6 @@ fn to_terminal_coords((row, col): Position) -> (f64, f64) {
         // Widths are doubled, since square tiles are achieved using two █ characters: ██.
         (col * 2) as f64,
         // Rows are counted from the bottom of the area instead of the top.
-        (PLAYABLE_ROWS - row - 1) as f64,
+        (Board::PLAYABLE_ROWS - row - 1) as f64,
     )
 }

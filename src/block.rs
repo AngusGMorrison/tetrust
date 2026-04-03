@@ -7,7 +7,7 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 
-use crate::board::{BOARD_COLS, BUFFER_ZONE_ROWS};
+use crate::board::Board;
 
 /// Row-column coordinates for matrix access.
 pub type Position = (usize, usize);
@@ -445,7 +445,7 @@ const Z_ROTATIONS: &Rotations = &Rotations([
 ]);
 
 /// The block currently under the player's control.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveBlock {
     // The row-column coordinates of the top-left corner of the block's virtual bounding box on the
     // board.
@@ -472,21 +472,21 @@ impl ActiveBlock {
 
         let width = rotation.width();
         debug_assert!(
-            width <= BOARD_COLS,
+            width <= Board::COLUMNS,
             "Block width {} exceeds board width {}",
             width,
-            BOARD_COLS,
+            Board::COLUMNS,
         );
 
         // Place the bounding box so that the block lands at the bottom of the buffer zone.
-        let r = BUFFER_ZONE_ROWS - rotation.vertical_offset() - height;
+        let r = Board::BUFFER_ZONE_ROWS - rotation.vertical_offset() - height;
 
         // The initial column coordinate places the block approximately in the center of the board.
         //
         // For example, on a standard 10-column board, the I block's leftmost cell falls in row[3],
         // while the O and S blocks' fall in row[4]. This gives a one-cell rightwards bias to
         // three-cell-wide blocks.
-        let c = BOARD_COLS / 2 - rotation.horizontal_offset() - width / 2;
+        let c = Board::COLUMNS / 2 - rotation.horizontal_offset() - width / 2;
 
         Self {
             top_left: (r, c as isize),
@@ -626,6 +626,228 @@ mod block_type_tests {
         #[test]
         fn z_returns_z_rotations() {
             assert_eq!(Z.rotations(), Z_ROTATIONS);
+        }
+    }
+}
+
+#[cfg(test)]
+mod active_block_tests {
+    use super::*;
+
+    mod new_tests {
+        use super::*;
+
+        #[test]
+        fn when_block_type_is_i_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::I),
+                ActiveBlock {
+                    top_left: (0, 3),
+                    block_type: BlockType::I,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_block_type_is_j_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::J),
+                ActiveBlock {
+                    top_left: (0, 4),
+                    block_type: BlockType::J,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_block_type_is_l_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::L),
+                ActiveBlock {
+                    top_left: (0, 4),
+                    block_type: BlockType::L,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_block_type_is_o_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::O),
+                ActiveBlock {
+                    top_left: (0, 4),
+                    block_type: BlockType::O,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_block_type_is_s_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::S),
+                ActiveBlock {
+                    top_left: (0, 4),
+                    block_type: BlockType::S,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_block_type_is_t_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::T),
+                ActiveBlock {
+                    top_left: (0, 4),
+                    block_type: BlockType::T,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+
+        #[test]
+        fn when_block_type_is_z_positions_block_at_bottom_of_buffer_zone() {
+            assert_eq!(
+                ActiveBlock::new(BlockType::Z),
+                ActiveBlock {
+                    top_left: (0, 4),
+                    block_type: BlockType::Z,
+                    rotation_idx: RotationIndex::new(),
+                }
+            );
+        }
+    }
+
+    mod board_positions_tests {
+        use super::*;
+
+        #[test]
+        fn when_block_is_within_bounds_returns_correct_positions() {
+            let block = ActiveBlock::new(BlockType::I);
+            let positions: Vec<Position> = block.board_positions().collect();
+            assert_eq!(positions, vec![(1, 3), (1, 4), (1, 5), (1, 6)]);
+        }
+
+        #[test]
+        fn when_block_is_past_left_bounds_out_of_bounds_columns_overflow_to_usize_max() {
+            let block = ActiveBlock {
+                top_left: (0, -1),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            let positions: Vec<Position> = block.board_positions().collect();
+            assert_eq!(
+                positions,
+                vec![(1, usize::MAX), (1, 0), (1, 1), (1, 2)]
+            );
+        }
+    }
+
+    mod move_down_tests {
+        use super::*;
+
+        #[test]
+        fn when_below_usize_max_increments_row() {
+            let mut block = ActiveBlock {
+                top_left: (0, 0),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_down();
+            assert_eq!(block.top_left, (1, 0));
+        }
+
+        #[test]
+        fn when_at_usize_max_row_does_not_overflow() {
+            let mut block = ActiveBlock {
+                top_left: (usize::MAX, 0),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_down();
+            assert_eq!(block.top_left, (usize::MAX, 0));
+        }
+    }
+
+    mod move_up_tests {
+        use super::*;
+
+        #[test]
+        fn when_above_row_0_decrements_row() {
+            let mut block = ActiveBlock {
+                top_left: (1, 0),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_up();
+            assert_eq!(block.top_left, (0, 0));
+        }
+
+        #[test]
+        fn when_at_row_0_does_not_underflow() {
+            let mut block = ActiveBlock {
+                top_left: (0, 0),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_up();
+            assert_eq!(block.top_left, (0, 0));
+        }
+    }
+
+    mod move_left_tests {
+        use super::*;
+
+        #[test]
+        fn when_right_of_isize_min_decrements_column() {
+            let mut block = ActiveBlock {
+                top_left: (0, 0),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_left();
+            assert_eq!(block.top_left, (0, -1));
+        }
+
+        #[test]
+        fn when_at_isize_min_column_does_not_underflow() {
+            let mut block = ActiveBlock {
+                top_left: (0, isize::MIN),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_left();
+            assert_eq!(block.top_left, (0, isize::MIN));
+        }
+    }
+
+    mod move_right_tests {
+        use super::*;
+
+        #[test]
+        fn when_left_of_isize_max_increments_column() {
+            let mut block = ActiveBlock {
+                top_left: (0, 0),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_right();
+            assert_eq!(block.top_left, (0, 1));
+        }
+
+        #[test]
+        fn when_at_isize_max_column_does_not_overflow() {
+            let mut block = ActiveBlock {
+                top_left: (0, isize::MAX),
+                block_type: BlockType::I,
+                rotation_idx: RotationIndex::new(),
+            };
+            block.move_right();
+            assert_eq!(block.top_left, (0, isize::MAX));
         }
     }
 }
