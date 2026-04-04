@@ -20,22 +20,46 @@ mod any_tests {
 
     #[test]
     fn when_gravity_and_input_are_false_returns_false() {
-        assert!(!Tick { gravity: false, input: false }.any());
+        assert!(
+            !Tick {
+                gravity: false,
+                input: false
+            }
+            .any()
+        );
     }
 
     #[test]
     fn when_gravity_is_true_and_input_is_false_returns_true() {
-        assert!(Tick { gravity: true, input: false }.any());
+        assert!(
+            Tick {
+                gravity: true,
+                input: false
+            }
+            .any()
+        );
     }
 
     #[test]
     fn when_gravity_is_false_and_input_is_true_returns_true() {
-        assert!(Tick { gravity: false, input: true }.any());
+        assert!(
+            Tick {
+                gravity: false,
+                input: true
+            }
+            .any()
+        );
     }
 
     #[test]
     fn when_gravity_and_input_are_true_returns_true() {
-        assert!(Tick { gravity: true, input: true }.any());
+        assert!(
+            Tick {
+                gravity: true,
+                input: true
+            }
+            .any()
+        );
     }
 }
 
@@ -71,6 +95,7 @@ pub struct GameTimer<C = SystemClock> {
 impl GameTimer<SystemClock> {
     /// Instantiates a new [GameTimer] that advances when polled, returning a [Tick]
     /// each time a tick interval has elapsed since the last poll.
+    #[cfg(test)]
     pub fn new(tick_interval: Duration, gravity_ticks: u64, input_ticks: u64) -> Self {
         Self::new_with_clock(tick_interval, gravity_ticks, input_ticks, SystemClock)
     }
@@ -240,25 +265,49 @@ mod game_timer_tests {
         #[test]
         fn when_tick_count_is_multiple_of_both_both_flags_are_true() {
             let timer = timer_with_tick_count(2, 3, 6);
-            assert_eq!(timer.last_tick(), Tick { gravity: true, input: true });
+            assert_eq!(
+                timer.last_tick(),
+                Tick {
+                    gravity: true,
+                    input: true
+                }
+            );
         }
 
         #[test]
         fn when_tick_count_is_multiple_of_gravity_ticks_only_gravity_is_true() {
             let timer = timer_with_tick_count(2, 3, 4);
-            assert_eq!(timer.last_tick(), Tick { gravity: true, input: false });
+            assert_eq!(
+                timer.last_tick(),
+                Tick {
+                    gravity: true,
+                    input: false
+                }
+            );
         }
 
         #[test]
         fn when_tick_count_is_multiple_of_input_ticks_only_input_is_true() {
             let timer = timer_with_tick_count(2, 3, 3);
-            assert_eq!(timer.last_tick(), Tick { gravity: false, input: true });
+            assert_eq!(
+                timer.last_tick(),
+                Tick {
+                    gravity: false,
+                    input: true
+                }
+            );
         }
 
         #[test]
         fn when_tick_count_is_multiple_of_neither_both_flags_are_false() {
             let timer = timer_with_tick_count(2, 3, 5);
-            assert_eq!(timer.last_tick(), Tick { gravity: false, input: false });
+            assert_eq!(
+                timer.last_tick(),
+                Tick {
+                    gravity: false,
+                    input: false
+                }
+            );
         }
     }
 
@@ -280,7 +329,13 @@ mod game_timer_tests {
             let clock = MockClock::new(Instant::now());
             let mut timer = GameTimer::new_with_clock(INTERVAL, 1, 1, clock.clone());
             clock.advance(INTERVAL);
-            assert_eq!(timer.update(), Some(Tick { gravity: true, input: true }));
+            assert_eq!(
+                timer.update(),
+                Some(Tick {
+                    gravity: true,
+                    input: true
+                })
+            );
             assert_eq!(timer.tick_count, 1);
         }
     }
@@ -368,7 +423,8 @@ mod interval_timer_tests {
 
         #[test]
         fn initializes_time_since_last_tick_to_zero() {
-            let timer = IntervalTimer::new(Duration::from_millis(100), MockClock::new(Instant::now()));
+            let timer =
+                IntervalTimer::new(Duration::from_millis(100), MockClock::new(Instant::now()));
             assert_eq!(timer.time_since_last_tick, Duration::ZERO);
         }
 
@@ -414,7 +470,9 @@ mod interval_timer_tests {
         #[test]
         fn when_elapsed_time_spans_multiple_intervals_returns_true() {
             let mut timer = timer_at(Instant::now());
-            timer.clock.advance(INTERVAL * 2 + Duration::from_millis(30));
+            timer
+                .clock
+                .advance(INTERVAL * 2 + Duration::from_millis(30));
             assert!(timer.update());
         }
 
