@@ -30,7 +30,7 @@ const SCORE_WIDGET_HEIGHT: u16 = 3;
 
 const NEXT_BLOCK_WIDGET_HEIGHT: u16 = 4;
 
-impl<R, I> Widget for &Game<R, I> {
+impl<I, C, S> Widget for &Game<I, C, S> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
@@ -56,7 +56,7 @@ impl<R, I> Widget for &Game<R, I> {
     }
 }
 
-impl<R, I> Game<R, I> {
+impl<I, C, S> Game<I, C, S> {
     fn render_game_in_progress(&self, game_area: Rect, buf: &mut Buffer) {
         let [_, board_area, _, sidebar_area, _] = game_area.layout::<5>(&Layout::horizontal([
             Constraint::Fill(1),

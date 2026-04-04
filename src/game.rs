@@ -2,14 +2,12 @@ use std::collections::VecDeque;
 use std::io;
 use std::time::Duration;
 
-use rand::Rng;
-
-use rand_distr::Uniform;
+use rand_distr::{Distribution, Uniform};
 
 use crate::block_generator::BlockGenerator;
 use crate::config::Config;
 use crate::input::{Input, PollInput};
-use crate::timer::{GameTimer, Tick};
+use crate::timer::{Clock, GameTimer, SystemClock, Tick};
 use crate::{
     block::{ActiveBlock, BlockType},
     board::Board,
@@ -27,15 +25,16 @@ enum Direction {
 
 /// A game of Tetrust.
 #[derive(Debug)]
-pub struct Game<R, I> {
+pub struct Game<I, C = SystemClock, S = Uniform<u8>> {
+    clock: C,
     config: Config,
     score: u32,
     board: Board,
-    block_generator: BlockGenerator<R, Uniform<u8>>,
+    block_generator: BlockGenerator<S>,
     active_block: ActiveBlock,
     queue: VecDeque<BlockType>,
     game_over: bool,
-    timer: GameTimer,
+    timer: GameTimer<C>,
     input: I,
 }
 
@@ -45,7 +44,7 @@ pub enum UpdateOutcome {
     Quit,
 }
 
-impl<R, I> Game<R, I> {
+impl<I, C, S> Game<I, C, S> {
     /// Returns the current score.
     pub fn score(&self) -> u32 {
         self.score
@@ -67,10 +66,6 @@ impl<R, I> Game<R, I> {
         front
     }
 
-    pub fn time_until_next_tick(&self) -> Duration {
-        self.timer.time_until_next_tick()
-    }
-
     pub(crate) fn active_block(&self) -> &ActiveBlock {
         &self.active_block
     }
@@ -80,9 +75,26 @@ impl<R, I> Game<R, I> {
     }
 }
 
-impl<R: Rng, I: PollInput> Game<R, I> {
+impl<I, C: Clock, S> Game<I, C, S> {
+    pub fn time_until_next_tick(&self) -> Duration {
+        self.timer.time_until_next_tick()
+    }
+}
+
+impl<I: PollInput> Game<I, SystemClock, Uniform<u8>> {
     /// Instantiate a new game using the given [BlockGenerator] as its source of [Block]s.
-    pub fn new(mut block_generator: BlockGenerator<R, Uniform<u8>>, input: I, config: Config) -> Self {
+    pub fn new(block_generator: BlockGenerator<Uniform<u8>>, input: I, config: Config) -> Self {
+        Self::new_with_clock(block_generator, input, config, SystemClock)
+    }
+}
+
+impl<I: PollInput, C: Clock + Clone, S: Distribution<u8>> Game<I, C, S> {
+    pub(crate) fn new_with_clock(
+        mut block_generator: BlockGenerator<S>,
+        input: I,
+        config: Config,
+        clock: C,
+    ) -> Self {
         let first_block = block_generator.block();
         let active_block = ActiveBlock::new(first_block);
 
@@ -91,13 +103,15 @@ impl<R: Rng, I: PollInput> Game<R, I> {
             (0..QUEUE_LEN).map(|_| block_generator.block()).collect();
         queue.make_contiguous(); // simplifies returning the queue to the game loop
 
-        let timer = GameTimer::new(
+        let timer = GameTimer::new_with_clock(
             config.frame_interval,
             config.gravity.initial_ticks(),
             config.input_ticks,
+            clock.clone(),
         );
 
         Game {
+            clock,
             config,
             timer,
             score: 0,
@@ -112,10 +126,11 @@ impl<R: Rng, I: PollInput> Game<R, I> {
 
     /// Begins a new game.
     fn restart(&mut self) {
-        self.timer = GameTimer::new(
+        self.timer = GameTimer::new_with_clock(
             self.config.frame_interval,
             self.config.gravity.initial_ticks(),
             self.config.input_ticks,
+            self.clock.clone(),
         );
         self.score = 0;
         self.board = Board::new();
@@ -271,5 +286,291 @@ impl<R: Rng, I: PollInput> Game<R, I> {
         if self.board.collides(&self.active_block) {
             undo(&mut self.active_block)
         }
+    }
+}
+
+#[cfg(test)]
+mod game_tests {
+    use std::time::Instant;
+
+    use crate::config::{Config, Gravity};
+    use crate::timer::test_helpers::MockClock;
+
+    use super::test_helpers::{MockGame, MockInput, make_game};
+    use super::*;
+
+    const FRAME_INTERVAL: Duration = Duration::from_millis(100);
+
+    fn config() -> Config {
+        Config {
+            frame_interval: FRAME_INTERVAL,
+            gravity: Gravity::new(2, 1, 1).unwrap(),
+            accelerate_every_n_points: 5,
+            input_ticks: 1,
+        }
+    }
+
+    mod restart_tests {
+        use super::*;
+
+        #[test]
+        fn resets_state() {
+            let clock = MockClock::new(Instant::now());
+            let mut game = make_game(clock, MockInput::new([]), config(), 1);
+
+            // Dirty the state
+            game.score = 10;
+            game.game_over = true;
+            game.board.fix_active_block(&game.active_block.clone());
+
+            game.restart();
+
+            assert_eq!(game.score, 0);
+            assert!(!game.game_over);
+            assert_eq!(game.board, Board::new());
+            assert_eq!(*game.active_block(), ActiveBlock::new(BlockType::I));
+            assert_eq!(game.queue(), &[BlockType::I; QUEUE_LEN]);
+        }
+    }
+
+    mod update_tests {
+        use super::*;
+
+        #[test]
+        fn when_timer_has_not_ticked_returns_unchanged() {
+            let clock = MockClock::new(Instant::now());
+            let mut game = make_game(clock, MockInput::new([]), config(), 1);
+            let outcome = game.update().unwrap();
+            assert!(matches!(outcome, UpdateOutcome::Unchanged));
+        }
+
+        mod game_in_progress_tests {
+            use super::*;
+
+            #[test]
+            fn when_neither_gravity_nor_input_ticks_returns_unchanged() {
+                let cfg = Config { gravity: Gravity::new(3, 1, 1).unwrap(), input_ticks: 2, ..config() };
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([]), cfg, 1);
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Unchanged));
+            }
+
+            #[test]
+            fn when_any_tick_fires_returns_updated() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::None]), config(), 1);
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Updated));
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_quit_returns_quit() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Quit]), config(), 1);
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Quit));
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_restart_returns_updated_and_resets_game_over() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Restart]), config(), 1);
+                game.game_over = true;
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                assert!(!game.game_over());
+            }
+
+            #[test]
+            fn when_gravity_ticks_active_block_moves_down() {
+                let cfg = Config { gravity: Gravity::new(1, 1, 1).unwrap(), input_ticks: 2, ..config() };
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([]), cfg, 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                let mut expected = before;
+                expected.move_down();
+                assert_eq!(*game.active_block(), expected);
+            }
+
+            #[test]
+            fn when_input_tick_is_false_input_is_not_polled() {
+                let cfg = Config { input_ticks: 2, ..config() };
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Left]), cfg, 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                assert_eq!(*game.active_block(), before);
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_down_active_block_moves_down() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Down]), config(), 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                let mut expected = before;
+                expected.move_down();
+                assert_eq!(*game.active_block(), expected);
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_left_active_block_moves_left() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Left]), config(), 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                let mut expected = before;
+                expected.move_left();
+                assert_eq!(*game.active_block(), expected);
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_right_active_block_moves_right() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Right]), config(), 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                let mut expected = before;
+                expected.move_right();
+                assert_eq!(*game.active_block(), expected);
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_rotate_left_active_block_rotates_counter_clockwise() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::RotateLeft]), config(), 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                let mut expected = before;
+                expected.rotate_counter_clockwise();
+                assert_eq!(*game.active_block(), expected);
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_rotate_right_active_block_rotates_clockwise() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::RotateRight]), config(), 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                let mut expected = before;
+                expected.rotate_clockwise();
+                assert_eq!(*game.active_block(), expected);
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_other_no_state_change() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([Input::Help]), config(), 1);
+                let before = game.active_block().clone();
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                assert_eq!(*game.active_block(), before);
+            }
+        }
+
+        mod game_over_tests {
+            use super::*;
+
+            fn game_over_game(clock: MockClock, input: MockInput) -> MockGame {
+                let mut game = make_game(clock, input, config(), 1);
+                game.game_over = true;
+                game
+            }
+
+            #[test]
+            fn when_input_tick_is_false_returns_unchanged() {
+                let cfg = Config { input_ticks: 2, ..config() };
+                let clock = MockClock::new(Instant::now());
+                let mut game = make_game(clock.clone(), MockInput::new([]), cfg, 1);
+                game.game_over = true;
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Unchanged));
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_quit_returns_quit() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = game_over_game(clock.clone(), MockInput::new([Input::Quit]));
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Quit));
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_restart_returns_updated() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = game_over_game(clock.clone(), MockInput::new([Input::Restart]));
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Updated));
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_restart_resets_game_over() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = game_over_game(clock.clone(), MockInput::new([Input::Restart]));
+                clock.advance(FRAME_INTERVAL);
+                game.update().unwrap();
+                assert!(!game.game_over());
+            }
+
+            #[test]
+            fn when_input_tick_is_true_and_input_is_other_returns_unchanged() {
+                let clock = MockClock::new(Instant::now());
+                let mut game = game_over_game(clock.clone(), MockInput::new([Input::Left]));
+                clock.advance(FRAME_INTERVAL);
+                assert!(matches!(game.update().unwrap(), UpdateOutcome::Unchanged));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_helpers {
+    use std::collections::VecDeque;
+
+    use crate::block_generator::{BlockGenerator, test_helpers as block_generator_test_helpers};
+    use crate::config::Config;
+    use crate::input::{Input, PollInput};
+    use crate::timer::test_helpers::MockClock;
+
+    use super::*;
+
+    /// A mock input source that returns a fixed sequence of inputs, then `Input::None`.
+    pub(super) struct MockInput(VecDeque<Input>);
+
+    impl MockInput {
+        pub(super) fn new(inputs: impl IntoIterator<Item = Input>) -> Self {
+            Self(inputs.into_iter().collect())
+        }
+    }
+
+    impl PollInput for MockInput {
+        fn poll_input(&mut self, _duration: Duration) -> io::Result<Input> {
+            Ok(self.0.pop_front().unwrap_or(Input::None))
+        }
+    }
+
+    pub(super) type MockGame = Game<MockInput, MockClock, block_generator_test_helpers::MockSampler>;
+
+    pub(super) fn make_game(
+        clock: MockClock,
+        input: MockInput,
+        config: Config,
+        sampler_value: u8,
+    ) -> MockGame {
+        Game::new_with_clock(
+            BlockGenerator::with_mock_sampler(sampler_value),
+            input,
+            config,
+            clock,
+        )
     }
 }

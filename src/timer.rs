@@ -39,12 +39,12 @@ mod any_tests {
     }
 }
 
-pub(crate) trait Clock {
+pub trait Clock {
     fn now(&self) -> Instant;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SystemClock;
+pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Instant {
@@ -55,7 +55,7 @@ impl Clock for SystemClock {
 /// Ticks at a constant rate, returning the events that should be triggered on each tick. Must be
 /// manually updated in a loop in order to accumulate progress towards the next tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GameTimer<C: Clock = SystemClock> {
+pub struct GameTimer<C = SystemClock> {
     interval_timer: IntervalTimer<C>,
 
     // The number of ticks after which gravity should be applied.
@@ -77,7 +77,7 @@ impl GameTimer<SystemClock> {
 }
 
 impl<C: Clock> GameTimer<C> {
-    fn new_with_clock(
+    pub(crate) fn new_with_clock(
         tick_interval: Duration,
         gravity_ticks: u64,
         input_ticks: u64,
@@ -134,21 +134,21 @@ impl<C: Clock> GameTimer<C> {
 }
 
 #[cfg(test)]
-mod test_helpers {
+pub(crate) mod test_helpers {
     use std::cell::Cell;
     use std::rc::Rc;
 
     use super::*;
 
     #[derive(Debug, Clone)]
-    pub(super) struct MockClock(Rc<Cell<Instant>>);
+    pub(crate) struct MockClock(Rc<Cell<Instant>>);
 
     impl MockClock {
-        pub(super) fn new(now: Instant) -> Self {
+        pub(crate) fn new(now: Instant) -> Self {
             Self(Rc::new(Cell::new(now)))
         }
 
-        pub(super) fn advance(&self, d: Duration) {
+        pub(crate) fn advance(&self, d: Duration) {
             self.0.set(self.0.get() + d);
         }
     }
@@ -300,7 +300,7 @@ mod game_timer_tests {
 /// Ticks at a constant rate specified at instantiation. The timer must be manually updated in a
 /// loop in order to accumulate progress towards the next tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct IntervalTimer<C: Clock> {
+struct IntervalTimer<C> {
     clock: C,
 
     // The interval between ticks.
