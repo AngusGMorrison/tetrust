@@ -17,7 +17,7 @@ const ACCELERATE_EVERY_N_POINTS: u32 = 5;
 const INPUT_TICKS: u64 = 1;
 
 fn main() -> Result<(), String> {
-    let block_generator = BlockGenerator::new(rand::rng());
+    let block_generator = BlockGenerator::new();
     let frame_interval = Duration::from_secs_f32(1.0 / 60.0);
     let config = Config {
         gravity: Gravity::new(INITIAL_GRAVITY_TICKS, MIN_GRAVITY_TICKS, ACCELERATION)?,
